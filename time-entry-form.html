@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quick Date Entry</title>
+  <title>Quick Time Entry</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -34,7 +34,7 @@
     .row-time-note {
       display: flex;
       gap: 0.75rem;
-      align-items: flex-start;   /* align labels at the top */
+      align-items: flex-start;
       flex-wrap: wrap;
       margin-bottom: 0.75rem;
     }
@@ -63,11 +63,8 @@
       padding: 0.4rem;
       width: 100%;
       box-sizing: border-box;
-      resize: vertical; /* allow expand if needed */
-      min-height: calc(1em * 1.3 * 2 + 0.8rem); /* approx two lines + padding */
-      /* If you want fixed height exactly two lines:
-         height: calc(1em * 1.3 * 2 + 0.8rem);
-         resize: none; */
+      resize: vertical;
+      min-height: calc(1em * 1.3 * 2 + 0.8rem); /* ~2 lines */
     }
 
     .spin-group {
@@ -149,15 +146,16 @@
       align-items: center;
     }
     .group {
-      margin-top: 1rem;
+      margin-top: 0.75rem;
       border-top: 1px solid #ddd;
-      padding-top: 0.5rem;
+      padding-top: 0.4rem;
     }
     .group-header {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 1rem;
+      margin-bottom: 0.25rem;
     }
     .group-title {
       margin: 0;
@@ -168,38 +166,44 @@
       font-size: 0.9rem;
       white-space: nowrap;
     }
+
+    /* Compact inline history rows */
     .history-list {
       list-style: none;
       padding-left: 0;
-      margin: 0.5rem 0 0 0;
+      margin: 0;
     }
     .history-item {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 0.75rem;
-      padding: 0.6rem 0;
+      grid-template-columns: 1fr auto; /* left inline data + right elapsed */
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
       border-bottom: 1px solid #eee;
     }
-    .history-item .value {
+    .left-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-width: 0;
+      font-size: 0.95rem;
+    }
+    .time-only {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-    .note {
-      color: #333;
-      margin-top: 0.25rem;
-    }
-    .elapsed {
-      color: #555;
-      font-size: 0.9rem;
+      color: #222;
       white-space: nowrap;
-      align-self: center;
+    }
+    .sep {
+      color: #999;
+      user-select: none;
     }
     .pill {
       display: inline-block;
-      padding: 0.1rem 0.45rem;
+      padding: 0.05rem 0.4rem;
       border-radius: 999px;
       font-size: 0.8rem;
       border: 1px solid transparent;
-      margin-left: 0.35rem;
+      white-space: nowrap;
     }
     .billable-true {
       background: #dff0d8;
@@ -210,6 +214,20 @@
       background: #fdecea;
       color: #c62828;
       border-color: #f5c6c6;
+    }
+    .note-inline {
+      color: #333;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+    }
+    .elapsed {
+      color: #555;
+      font-size: 0.9rem;
+      white-space: nowrap;
+      justify-self: end;
     }
     .empty {
       color: #777;
@@ -240,7 +258,7 @@
       </div>
     </div>
 
-    <!-- Hour/Minute spin buttons -->
+    <!-- Hour/Minute spin + Billable inline -->
     <div class="row">
       <!-- Hour spin -->
       <div class="spin-group" aria-label="Adjust hour">
@@ -256,7 +274,7 @@
         <button type="button" id="min-inc" aria-label="Increment minute">+</button>
       </div>
 
-      <!-- Billable checkbox -->
+      <!-- Billable checkbox (aligned right) -->
       <label class="inline" for="billable" title="Billable by default" style="margin-left:auto;">
         <input id="billable" type="checkbox" checked />
         Billable
@@ -278,6 +296,7 @@
       <button type="button" id="reset-now" class="secondary">Reset to now</button>
       <button type="button" id="log-value">Save value</button>
       <button type="button" id="start-day" class="secondary" title="Save an entry with note 'Start of day.' and billable = FALSE">Start of day timehack</button>
+      <button type="button" id="export-csv" class="secondary" title="Export saved entries to CSV">Export CSV</button>
       <button type="button" id="clear-history" class="secondary" title="Clear saved entries">Clear history</button>
     </div>
 
@@ -316,6 +335,11 @@
       return datetimeStr.split('T')[0]; // "YYYY-MM-DD"
     }
 
+    function getTimePart(datetimeStr) {
+      // returns "HH:MM"
+      return datetimeStr.split('T')[1];
+    }
+
     function formatElapsed(ms) {
       const sign = ms < 0 ? '-' : '+';
       const abs = Math.abs(ms);
@@ -336,7 +360,7 @@
     const historyEmpty = document.getElementById('history-empty');
     const countEl = document.getElementById('count');
 
-    const STORAGE_KEY = 'quick-date-entry-history';
+    const STORAGE_KEY = 'quick-time-entry-history';
 
     function setNow() {
       const now = new Date();
@@ -454,7 +478,7 @@
       }
       const groupKeysDesc = Array.from(groupsMap.keys()).sort((a, b) => new Date(b) - new Date(a));
 
-      // 5) Render groups
+      // 5) Render groups with COMPACT inline rows (time-only per record)
       for (const key of groupKeysDesc) {
         const entries = groupsMap.get(key);
 
@@ -484,27 +508,39 @@
           const li = document.createElement('li');
           li.className = 'history-item';
 
-          const left = document.createElement('div');
-          const valueEl = document.createElement('div');
-          valueEl.className = 'value';
-          valueEl.textContent = entry.datetime;
+          // Inline left: time-only · pill · note (truncated)
+          const leftInline = document.createElement('div');
+          leftInline.className = 'left-inline';
+
+          const timeOnlyEl = document.createElement('span');
+          timeOnlyEl.className = 'time-only';
+          timeOnlyEl.textContent = getTimePart(entry.datetime); // HH:MM
+
+          const sep1 = document.createElement('span');
+          sep1.className = 'sep';
+          sep1.textContent = '·';
 
           const billableEl = document.createElement('span');
           billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
           billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
           billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
 
-          const valueRow = document.createElement('div');
-          valueRow.appendChild(valueEl);
-          valueRow.appendChild(billableEl);
+          const sep2 = document.createElement('span');
+          sep2.className = 'sep';
+          sep2.textContent = '·';
 
-          const noteEl = document.createElement('div');
-          noteEl.className = 'note';
-          noteEl.textContent = entry.note ? entry.note : '—';
+          const noteInline = document.createElement('span');
+          noteInline.className = 'note-inline';
+          noteInline.textContent = entry.note ? entry.note : '—';
+          if (entry.note) noteInline.title = entry.note;
 
-          left.appendChild(valueRow);
-          left.appendChild(noteEl);
+          leftInline.appendChild(timeOnlyEl);
+          leftInline.appendChild(sep1);
+          leftInline.appendChild(billableEl);
+          leftInline.appendChild(sep2);
+          leftInline.appendChild(noteInline);
 
+          // Right: elapsed (inline, right aligned)
           const elapsedEl = document.createElement('span');
           elapsedEl.className = 'elapsed';
           if (entry.displayDeltaMs === null) {
@@ -517,7 +553,7 @@
               : 'Δ from prior saved entry';
           }
 
-          li.appendChild(left);
+          li.appendChild(leftInline);
           li.appendChild(elapsedEl);
           listEl.appendChild(li);
         }
@@ -581,6 +617,83 @@
       renderHistory();
     }
 
+    // ===== CSV Export =====
+    function csvEscape(value) {
+      if (value == null) return '';
+      const s = String(value);
+      if (/[",\n]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+
+    function buildCsvRows() {
+      const history = loadHistory();
+      if (!history.length) return [];
+
+      // Sort newest-first and augment with prior gap & display rule
+      const sorted = history
+        .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
+        .sort((a, b) => b.dateObj - a.dateObj);
+
+      const augmented = sorted.map((e, i, arr) => {
+        const prior = arr[i + 1];
+        const deltaMs = prior ? (e.dateObj - prior.dateObj) : null;
+        const isStartOfDay = (e.note === 'Start of day.' && !e.billable);
+        const displayDeltaMs = isStartOfDay ? 0 : deltaMs;
+        return { ...e, deltaMs, displayDeltaMs, isStartOfDay };
+      });
+
+      const rows = [
+        ['Date', 'Time', 'Note', 'Billable', 'Elapsed'].map(csvEscape).join(',')
+      ];
+
+      for (const e of augmented) {
+        const [datePart, timePart] = e.datetime.split('T');
+        const note = e.note || '';
+        const billable = e.billable ? 'true' : 'false';
+        const elapsedStr =
+          e.displayDeltaMs == null
+            ? '' // no prior entry -> blank elapsed
+            : formatElapsed(e.displayDeltaMs).replace(/^\+/, ''); // drop leading '+' for CSV
+
+        rows.push([
+          csvEscape(datePart),
+          csvEscape(timePart),
+          csvEscape(note),
+          csvEscape(billable),
+          csvEscape(elapsedStr)
+        ].join(','));
+      }
+
+      return rows;
+    }
+
+    function exportToCSV() {
+      const rows = buildCsvRows();
+      if (!rows.length) {
+        alert('No data to export.');
+        return;
+      }
+      const csvContent = rows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const filename = `quick-date-${yyyy}-${mm}-${dd}.csv`;
+
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
     // ===== Initialize =====
     setNow();
     renderHistory();
@@ -595,6 +708,7 @@
     document.getElementById('reset-now').addEventListener('click', setNow);
     document.getElementById('log-value').addEventListener('click', () => appendCurrentToHistory());
     document.getElementById('start-day').addEventListener('click', () => addStartOfDayEntry());
+    document.getElementById('export-csv').addEventListener('click', exportToCSV);
     document.getElementById('clear-history').addEventListener('click', () => {
       if (confirm('Clear all saved entries?')) clearHistory();
     });
@@ -650,7 +764,7 @@
         return;
       }
       
-      // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new brower window ---
+      // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new browser window ---
       if (keyLower === 'n') {
         if (!(e.target === noteInput)) e.preventDefault();
         noteInput.focus();

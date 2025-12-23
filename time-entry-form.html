@@ -222,14 +222,16 @@
       </label>
     </div>
 
-    <p class="hint" id="kb-help">
-      Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
-      <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
-      <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
-      <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
-      <kbd>Enter</kbd> = save (works in note field)
-      <!-- Alphabetical shortcuts like B/N/R are disabled while the note field has focus -->
-    </p>
+	<p class="hint" id="kb-help">
+	  Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
+	  <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
+	  <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
+	  <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
+	  <kbd>Enter</kbd> = save,&nbsp;
+	  <kbd>Ctrl</kbd>+<kbd>B</kbd> = toggle billable,&nbsp;
+	  <kbd>Ctrl</kbd>+<kbd>R</kbd> = reset to now,&nbsp;
+	  <kbd>Ctrl</kbd>+<kbd>N</kbd> = focus note
+	</p>
 
     <div class="actions">
       <button type="button" id="reset-now" class="secondary">Reset to now</button>
@@ -564,84 +566,74 @@
     });
 
     // ===== Keyboard shortcuts =====
-    function handleKey(e) {
-      const key = e.key;
-      const ctrl = e.ctrlKey || e.metaKey; // treat Cmd as Ctrl
-      const shift = e.shiftKey;
-      const keyLower = key.toLowerCase();
-
-      // When NOTE field has focus: allow ONLY time-related keys + Enter to save.
-      if (e.target === noteInput) {
-        const allowed = ['arrowup','arrowdown','home','end','enter'];
-        if (!allowed.includes(keyLower)) return; // alphabetical shortcuts disabled
+  function handleKey(e) {
+    const keyLower = e.key.toLowerCase();
+    const ctrl = e.ctrlKey || e.metaKey; // treat Cmd (macOS) like Ctrl
+    const shift = e.shiftKey;
+  
+    // --- Time adjustments (always enabled) ---
+    if (keyLower === 'arrowup') {
+      e.preventDefault();
+      if (shift) applyDelta({ hours: 1 });
+      else if (ctrl) applyDelta({ minutes: 5 });
+      else applyDelta({ minutes: 1 });
+      return;
+    }
+    if (keyLower === 'arrowdown') {
+      e.preventDefault();
+      if (shift) applyDelta({ hours: -1 });
+      else if (ctrl) applyDelta({ minutes: -5 });
+      else applyDelta({ minutes: -1 });
+      return;
+    }
+    if (keyLower === 'home') {
+      e.preventDefault();
+      const d = getCurrentDate();
+      d.setMinutes(0, 0, 0);
+      dtInput.value = toDatetimeLocalValue(d);
+      updateLabels(d);
+      return;
+    }
+    if (keyLower === 'end') {
+      e.preventDefault();
+      const d = getCurrentDate();
+      d.setMinutes(59, 0, 0);
+      dtInput.value = toDatetimeLocalValue(d);
+      updateLabels(d);
+      return;
+    }
+  
+    // --- Enter saves (always enabled) ---
+    if (keyLower === 'enter') {
+      e.preventDefault();
+      appendCurrentToHistory();
+      return;
+    }
+    
+    // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new brower window ---
+    if (keyLower === 'n') {
+      if (!(e.target === noteInput)) e.preventDefault();
+      noteInput.focus();
+      return;
+    }
+  
+  
+    // --- Alpha shortcuts: require Ctrl/Cmd ---
+    if (ctrl) {
+      if (keyLower === 'b') {
         e.preventDefault();
-
-        if (keyLower === 'arrowup') {
-          if (shift) applyDelta({ hours: 1 });
-          else if (ctrl) applyDelta({ minutes: 5 });
-          else applyDelta({ minutes: 1 });
-        } else if (keyLower === 'arrowdown') {
-          if (shift) applyDelta({ hours: -1 });
-          else if (ctrl) applyDelta({ minutes: -5 });
-          else applyDelta({ minutes: -1 });
-        } else if (keyLower === 'home') {
-          const d = getCurrentDate();
-          d.setMinutes(0, 0, 0);
-          dtInput.value = toDatetimeLocalValue(d);
-          updateLabels(d);
-        } else if (keyLower === 'end') {
-          const d = getCurrentDate();
-          d.setMinutes(59, 0, 0);
-          dtInput.value = toDatetimeLocalValue(d);
-          updateLabels(d);
-        } else if (keyLower === 'enter') {
-          appendCurrentToHistory();
-        }
+        billableInput.checked = !billableInput.checked;
         return;
       }
-
-      // If typing in other inputs (not datetime), ignore
-      const target = e.target;
-      const isTextField =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable;
-      if (isTextField && target !== dtInput) return;
-
-      const handledKeys = ['arrowup','arrowdown','home','end','enter','r','b','n'];
-      if (!handledKeys.includes(keyLower)) return;
-      e.preventDefault();
-
-      if (keyLower === 'arrowup') {
-        if (shift) applyDelta({ hours: 1 });
-        else if (ctrl) applyDelta({ minutes: 5 });
-        else applyDelta({ minutes: 1 });
-      } else if (keyLower === 'arrowdown') {
-        if (shift) applyDelta({ hours: -1 });
-        else if (ctrl) applyDelta({ minutes: -5 });
-        else applyDelta({ minutes: -1 });
-      } else if (keyLower === 'home') {
-        const d = getCurrentDate();
-        d.setMinutes(0, 0, 0);
-        dtInput.value = toDatetimeLocalValue(d);
-        updateLabels(d);
-      } else if (keyLower === 'end') {
-        const d = getCurrentDate();
-        d.setMinutes(59, 0, 0);
-        dtInput.value = toDatetimeLocalValue(d);
-        updateLabels(d);
-      } else if (keyLower === 'r') {
+      if (keyLower === 'r') {
+        e.preventDefault();
         setNow();
-      } else if (keyLower === 'enter') {
-        appendCurrentToHistory();
-      } else if (keyLower === 'b') {
-        billableInput.checked = !billableInput.checked;
-        billableInput.blur();
-        noteInput.focus(); // move focus to the note field
-      } else if (keyLower === 'n') {
-        noteInput.focus();
+        return;
       }
     }
+  
+  }
+
 
     // Bind at both input and document level
     dtInput.addEventListener('keydown', handleKey);

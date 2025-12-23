@@ -13,7 +13,7 @@
       line-height: 1.4;
     }
     .card {
-      max-width: 760px;
+      max-width: 840px;
       border: 1px solid #ccc;
       border-radius: 10px;
       padding: 1rem;
@@ -104,7 +104,7 @@
       font-size: 0.9em;
     }
 
-    /* History styles */
+    /* History + grouping */
     .history {
       margin-top: 1.5rem;
     }
@@ -113,11 +113,30 @@
       justify-content: space-between;
       align-items: center;
     }
+    .group {
+      margin-top: 1rem;
+      border-top: 1px solid #ddd;
+      padding-top: 0.5rem;
+    }
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    .group-title {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    .group-subtotal {
+      color: #555;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
     .history-list {
       list-style: none;
       padding-left: 0;
       margin: 0.5rem 0 0 0;
-      border-top: 1px solid #ddd;
     }
     .history-item {
       display: grid;
@@ -209,7 +228,7 @@
       <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
       <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
       <kbd>R</kbd> = reset to now,&nbsp;
-      <kbd>Enter</kbd> = save value,&nbsp;
+      <kbd>Enter</kbd> = save (works in note field),&nbsp;
       <kbd>B</kbd> = toggle billable,&nbsp;
       <kbd>N</kbd> = focus note
     </p>
@@ -217,16 +236,16 @@
     <div class="actions">
       <button type="button" id="reset-now" class="secondary">Reset to now</button>
       <button type="button" id="log-value">Save value</button>
-      <button type="button" id="clear-history" class="secondary" title="Clear saved values">Clear history</button>
+      <button type="button" id="clear-history" class="secondary" title="Clear saved entries">Clear history</button>
     </div>
 
     <!-- History -->
     <div class="history" aria-live="polite">
       <div class="history-header">
-        <h2 style="margin: 0;">Saved entries</h2>
+        <h2 style="margin: 0;">Saved entries (newest first)</h2>
         <small id="count"></small>
       </div>
-      <ul id="history-list" class="history-list" aria-label="Saved entries (date, note, billable, elapsed)"></ul>
+      <div id="groups-container"></div>
       <p id="history-empty" class="empty" hidden>No saved entries yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
     </div>
   </div>
@@ -251,6 +270,11 @@
       return new Date(y, (m - 1), d, hh, mm, 0, 0);
     }
 
+    function getDateKey(datetimeStr) {
+      // Returns "YYYY-MM-DD" part
+      return datetimeStr.split('T')[0];
+    }
+
     function formatElapsed(ms) {
       // Format as +HH:MM:SS (supports >24h)
       const sign = ms < 0 ? '-' : '+';
@@ -268,7 +292,7 @@
     const noteInput = document.getElementById('note');
     const billableInput = document.getElementById('billable');
 
-    const historyList = document.getElementById('history-list');
+    const groupsContainer = document.getElementById('groups-container');
     const historyEmpty = document.getElementById('history-empty');
     const countEl = document.getElementById('count');
 
@@ -335,61 +359,136 @@
 
     function renderHistory() {
       const history = loadHistory();
-      historyList.innerHTML = '';
 
+      // Update header counts
       const billableCount = history.filter(h => h.billable).length;
       countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
       historyEmpty.hidden = history.length > 0;
-
+      groupsContainer.innerHTML = '';
       if (!history.length) return;
 
-      // Display in chronological order (oldest → newest)
-      for (let i = 0; i < history.length; i++) {
-        const entry = history[i];
-        const current = fromDatetimeLocalValue(entry.datetime);
-        const prev = i > 0 ? fromDatetimeLocalValue(history[i - 1].datetime) : null;
+      // 1) Sort all entries by datetime DESC (newest first)
+      const sorted = history
+        .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
+        .sort((a, b) => b.dateObj - a.dateObj);
 
-        const li = document.createElement('li');
-        li.className = 'history-item';
+      // 2) Compute per-entry elapsed to "prior" (next older entry in overall list)
+      //    For last (oldest) entry, deltaMs = null
+      const augmented = sorted.map((e, i, arr) => {
+        const nextOlder = arr[i + 1];
+        const deltaMs = nextOlder ? (e.dateObj - nextOlder.dateObj) : null;
+        return { ...e, deltaMs };
+      });
 
-        // Left side: datetime + billable + note
-        const left = document.createElement('div');
+      // 3) Group by date (YYYY-MM-DD), preserve DESC date order, entries within group DESC
+      const groupsMap = new Map(); // key -> array of augmented entries
+      for (const item of augmented) {
+        const key = getDateKey(item.datetime);
+        if (!groupsMap.has(key)) groupsMap.set(key, []);
+        groupsMap.get(key).push(item);
+      }
+      const groupKeysDesc = Array.from(groupsMap.keys()).sort((a, b) => {
+        // Compare date strings as actual dates
+        return new Date(b) - new Date(a);
+      });
 
-        const valueEl = document.createElement('div');
-        valueEl.className = 'value';
-        valueEl.textContent = entry.datetime;
+      // 4) Render groups with subtotals (entries count, billable count, total elapsed within date)
+      for (const key of groupKeysDesc) {
+        const entries = groupsMap.get(key);
 
-        const billableEl = document.createElement('span');
-        billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
-        billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
-        billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
+        // Subtotals: count, billable count, total elapsed within the same date
+        const totalCount = entries.length;
+        const billableCountGroup = entries.filter(e => e.billable).length;
 
-        const valueRow = document.createElement('div');
-        valueRow.appendChild(valueEl);
-        valueRow.appendChild(billableEl);
+        // Sum deltaMs only when the "prior" entry (next older) is in the same date
+        let totalElapsedMs = 0;
+        for (let i = 0; i < entries.length; i++) {
+          const current = entries[i];
+          // Find the next older entry overall (we must check the global augmented array)
+          // We already have current.deltaMs, but its "prior" might belong to another date.
+          // Determine if the immediate prior is in the same date:
+          const priorDateKeySame = (() => {
+            // To know if immediate prior is in same date, we need to locate current in augmented array.
+            const idx = augmented.findIndex(x =>
+              x.datetime === current.datetime && x.note === current.note && x.billable === current.billable && x.dateObj === current.dateObj
+            );
+            const prior = augmented[idx + 1];
+            return prior ? (getDateKey(prior.datetime) === key) : false;
+          })();
 
-        const noteEl = document.createElement('div');
-        noteEl.className = 'note';
-        noteEl.textContent = entry.note ? entry.note : '—';
-
-        left.appendChild(valueRow);
-        left.appendChild(noteEl);
-
-        // Right side: elapsed
-        const elapsedEl = document.createElement('span');
-        elapsedEl.className = 'elapsed';
-        if (prev) {
-          const deltaMs = current - prev;
-          elapsedEl.textContent = formatElapsed(deltaMs);
-          elapsedEl.title = `Δ from previous: ${formatElapsed(deltaMs)}`;
-        } else {
-          elapsedEl.textContent = '—';
-          elapsedEl.title = 'No previous entry';
+          if (current.deltaMs != null && priorDateKeySame) {
+            totalElapsedMs += current.deltaMs;
+          }
         }
 
-        li.appendChild(left);
-        li.appendChild(elapsedEl);
-        historyList.appendChild(li);
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group';
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'group-header';
+
+        const titleEl = document.createElement('h3');
+        titleEl.className = 'group-title';
+        titleEl.textContent = key;
+
+        const subtotalEl = document.createElement('div');
+        subtotalEl.className = 'group-subtotal';
+        const elapsedText = totalElapsedMs ? formatElapsed(totalElapsedMs) : '—';
+        subtotalEl.textContent = `Subtotal: ${totalCount} entries, ${billableCountGroup} billable, elapsed ${elapsedText}`;
+
+        headerDiv.appendChild(titleEl);
+        headerDiv.appendChild(subtotalEl);
+
+        const listEl = document.createElement('ul');
+        listEl.className = 'history-list';
+
+        // Render entries (DESC within group)
+        for (const entry of entries) {
+          const li = document.createElement('li');
+          li.className = 'history-item';
+
+          // Left: datetime + pill + note
+          const left = document.createElement('div');
+
+          const valueEl = document.createElement('div');
+          valueEl.className = 'value';
+          valueEl.textContent = entry.datetime;
+
+          const billableEl = document.createElement('span');
+          billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
+          billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
+          billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
+
+          const valueRow = document.createElement('div');
+          valueRow.appendChild(valueEl);
+          valueRow.appendChild(billableEl);
+
+          const noteEl = document.createElement('div');
+          noteEl.className = 'note';
+          noteEl.textContent = entry.note ? entry.note : '—';
+
+          left.appendChild(valueRow);
+          left.appendChild(noteEl);
+
+          // Right: elapsed from prior saved value (next older overall)
+          const elapsedEl = document.createElement('span');
+          elapsedEl.className = 'elapsed';
+          if (entry.deltaMs != null) {
+            elapsedEl.textContent = formatElapsed(entry.deltaMs);
+            elapsedEl.title = `Δ from prior saved entry`;
+          } else {
+            elapsedEl.textContent = '—';
+            elapsedEl.title = 'No prior entry';
+          }
+
+          li.appendChild(left);
+          li.appendChild(elapsedEl);
+          listEl.appendChild(li);
+        }
+
+        groupDiv.appendChild(headerDiv);
+        groupDiv.appendChild(listEl);
+        groupsContainer.appendChild(groupDiv);
       }
     }
 
@@ -406,9 +505,9 @@
       saveHistory(history);
       renderHistory();
 
-      // Optional: clear the note after save (uncomment if desired)
-      // noteInput.value = '';
-      // billableInput.checked = true; // keep default if you want to auto-reset
+      // Clear the note field after saving (as requested)
+      noteInput.value = '';
+      // Keep billable as-is (defaults to checked, but don't reset user toggles)
     }
 
     function clearHistory() {
@@ -439,10 +538,29 @@
       const ctrl = e.ctrlKey || e.metaKey; // treat Cmd on macOS like Ctrl
       const shift = e.shiftKey;
 
-      // Only act on keys we use; otherwise let native behavior through
       const keyLower = key.toLowerCase();
       const handledKeys = ['arrowup','arrowdown','home','end','enter','r','b','n'];
-      if (handledKeys.includes(keyLower)) e.preventDefault(); else return;
+
+      // If target is the note field, only handle Enter (so typing notes works as expected)
+      if (e.target === noteInput) {
+        if (keyLower === 'enter') {
+          e.preventDefault();
+          appendCurrentToHistory();
+        }
+        return;
+      }
+
+      // If typing in other text fields (not datetime), ignore
+      const target = e.target;
+      const isTextField =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable;
+      if (isTextField && target !== dtInput) return;
+
+      // Only act on keys we use
+      if (!handledKeys.includes(keyLower)) return;
+      e.preventDefault();
 
       if (keyLower === 'arrowup') {
         if (shift) applyDelta({ hours: 1 });
@@ -473,18 +591,9 @@
       }
     }
 
-    // Bind at both input and document level so it works even when the input isn't focused
+    // Bind at both input and document level
     dtInput.addEventListener('keydown', handleKey);
-    document.addEventListener('keydown', (e) => {
-      // Avoid interfering with typing inside other inputs
-      const target = e.target;
-      const isTextField =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable;
-      if (isTextField && target !== dtInput) return;
-      handleKey(e);
-    });
+    document.addEventListener('keydown', handleKey);
   </script>
 </body>
 </html>

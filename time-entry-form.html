@@ -13,7 +13,7 @@
       line-height: 1.4;
     }
     .card {
-      max-width: 720px;
+      max-width: 760px;
       border: 1px solid #ccc;
       border-radius: 10px;
       padding: 1rem;
@@ -29,11 +29,11 @@
       align-items: center;
       flex-wrap: wrap;
     }
-    input[type="datetime-local"] {
+    input[type="datetime-local"], input[type="text"] {
       padding: 0.4rem;
       font-size: 1rem;
       width: 100%;
-      max-width: 280px;
+      max-width: 320px;
     }
     .spin-group {
       display: inline-flex;
@@ -64,6 +64,11 @@
       font-size: 0.9rem;
       min-width: 4.5rem;
       justify-content: center;
+    }
+    .inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
     }
     .actions {
       margin-top: 1rem;
@@ -98,6 +103,7 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.9em;
     }
+
     /* History styles */
     .history {
       margin-top: 1.5rem;
@@ -123,16 +129,40 @@
     .history-item .value {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .history-item .elapsed {
+    .note {
+      color: #333;
+      margin-top: 0.25rem;
+    }
+    .elapsed {
       color: #555;
       font-size: 0.9rem;
       white-space: nowrap;
+      align-self: center;
+    }
+    .pill {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      border: 1px solid transparent;
+      margin-left: 0.35rem;
+    }
+    .billable-true {
+      background: #dff0d8;
+      color: #2e7d32;
+      border-color: #b2d8b8;
+    }
+    .billable-false {
+      background: #fdecea;
+      color: #c62828;
+      border-color: #f5c6c6;
     }
     .empty {
       color: #777;
       font-style: italic;
       margin-top: 0.5rem;
     }
+
     @media (pointer: coarse) {
       .spin-group > button { padding: 0.8rem 1rem; }
     }
@@ -161,13 +191,27 @@
       </div>
     </div>
 
+    <!-- Note and Billable -->
+    <div class="row" style="margin-top: 0.75rem;">
+      <div class="inline" style="flex: 1 1 320px;">
+        <label for="note" style="margin:0;">Note</label>
+      </div>
+      <input id="note" type="text" placeholder="Add a note (optional)" />
+      <label class="inline" for="billable" title="Billable by default">
+        <input id="billable" type="checkbox" checked />
+        Billable
+      </label>
+    </div>
+
     <p class="hint" id="kb-help">
       Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
       <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
       <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
       <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
       <kbd>R</kbd> = reset to now,&nbsp;
-      <kbd>Enter</kbd> = save value
+      <kbd>Enter</kbd> = save value,&nbsp;
+      <kbd>B</kbd> = toggle billable,&nbsp;
+      <kbd>N</kbd> = focus note
     </p>
 
     <div class="actions">
@@ -179,11 +223,11 @@
     <!-- History -->
     <div class="history" aria-live="polite">
       <div class="history-header">
-        <h2 style="margin: 0;">Saved values</h2>
+        <h2 style="margin: 0;">Saved entries</h2>
         <small id="count"></small>
       </div>
-      <ul id="history-list" class="history-list" aria-label="Saved date/time values"></ul>
-      <p id="history-empty" class="empty" hidden>No saved values yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
+      <ul id="history-list" class="history-list" aria-label="Saved entries (date, note, billable, elapsed)"></ul>
+      <p id="history-empty" class="empty" hidden>No saved entries yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
     </div>
   </div>
 
@@ -221,6 +265,9 @@
     const dtInput = document.getElementById('dt');
     const hourLabel = document.getElementById('hour-label');
     const minuteLabel = document.getElementById('minute-label');
+    const noteInput = document.getElementById('note');
+    const billableInput = document.getElementById('billable');
+
     const historyList = document.getElementById('history-list');
     const historyEmpty = document.getElementById('history-empty');
     const countEl = document.getElementById('count');
@@ -254,13 +301,29 @@
     }
 
     // ===== History persistence & rendering =====
+    /**
+     * History entry shape:
+     * { datetime: "YYYY-MM-DDTHH:MM", note: string, billable: boolean }
+     */
     function loadHistory() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
-        // Normalize: expect array of ISO-like strings or numbers
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+        // Migrate old string-only entries: assume billable true and empty note
+        const normalized = parsed.map(item => {
+          if (typeof item === 'string') {
+            return { datetime: item, note: '', billable: true };
+          } else {
+            return {
+              datetime: typeof item.datetime === 'string' ? item.datetime : '',
+              note: typeof item.note === 'string' ? item.note : '',
+              billable: item.billable !== undefined ? !!item.billable : true
+            };
+          }
+        }).filter(e => e.datetime);
+        return normalized;
       } catch {
         return [];
       }
@@ -274,35 +337,57 @@
       const history = loadHistory();
       historyList.innerHTML = '';
 
-      countEl.textContent = history.length ? `${history.length} saved` : '';
+      const billableCount = history.filter(h => h.billable).length;
+      countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
       historyEmpty.hidden = history.length > 0;
 
       if (!history.length) return;
 
-      // We will display in chronological order (oldest first)
+      // Display in chronological order (oldest → newest)
       for (let i = 0; i < history.length; i++) {
-        const valueStr = history[i]; // "YYYY-MM-DDTHH:MM"
-        const current = fromDatetimeLocalValue(valueStr);
-        const prev = i > 0 ? fromDatetimeLocalValue(history[i - 1]) : null;
+        const entry = history[i];
+        const current = fromDatetimeLocalValue(entry.datetime);
+        const prev = i > 0 ? fromDatetimeLocalValue(history[i - 1].datetime) : null;
+
         const li = document.createElement('li');
         li.className = 'history-item';
 
-        const valueEl = document.createElement('span');
-        valueEl.className = 'value';
-        valueEl.textContent = valueStr;
+        // Left side: datetime + billable + note
+        const left = document.createElement('div');
 
+        const valueEl = document.createElement('div');
+        valueEl.className = 'value';
+        valueEl.textContent = entry.datetime;
+
+        const billableEl = document.createElement('span');
+        billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
+        billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
+        billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
+
+        const valueRow = document.createElement('div');
+        valueRow.appendChild(valueEl);
+        valueRow.appendChild(billableEl);
+
+        const noteEl = document.createElement('div');
+        noteEl.className = 'note';
+        noteEl.textContent = entry.note ? entry.note : '—';
+
+        left.appendChild(valueRow);
+        left.appendChild(noteEl);
+
+        // Right side: elapsed
         const elapsedEl = document.createElement('span');
         elapsedEl.className = 'elapsed';
         if (prev) {
           const deltaMs = current - prev;
           elapsedEl.textContent = formatElapsed(deltaMs);
-          elapsedEl.title = `Δ from previous: ${formatElapsed(deltaMs)} (${prev.toLocaleString()})`;
+          elapsedEl.title = `Δ from previous: ${formatElapsed(deltaMs)}`;
         } else {
-          elapsedEl.textContent = '—'; // first entry has no previous
-          elapsedEl.title = 'No previous value';
+          elapsedEl.textContent = '—';
+          elapsedEl.title = 'No previous entry';
         }
 
-        li.appendChild(valueEl);
+        li.appendChild(left);
         li.appendChild(elapsedEl);
         historyList.appendChild(li);
       }
@@ -311,10 +396,19 @@
     function appendCurrentToHistory() {
       const currentStr = dtInput.value;
       if (!currentStr) return;
+      const entry = {
+        datetime: currentStr,
+        note: noteInput.value.trim(),
+        billable: !!billableInput.checked
+      };
       const history = loadHistory();
-      history.push(currentStr);
+      history.push(entry);
       saveHistory(history);
       renderHistory();
+
+      // Optional: clear the note after save (uncomment if desired)
+      // noteInput.value = '';
+      // billableInput.checked = true; // keep default if you want to auto-reset
     }
 
     function clearHistory() {
@@ -326,7 +420,7 @@
     setNow();
     renderHistory();
 
-    // Button wiring
+    // Buttons
     document.getElementById('hour-inc').addEventListener('click', () => applyDelta({ hours: 1 }));
     document.getElementById('hour-dec').addEventListener('click', () => applyDelta({ hours: -1 }));
     document.getElementById('min-inc').addEventListener('click', () => applyDelta({ minutes: 1 }));
@@ -334,13 +428,9 @@
 
     dtInput.addEventListener('input', () => updateLabels(getCurrentDate()));
     document.getElementById('reset-now').addEventListener('click', setNow);
-
-    document.getElementById('log-value').addEventListener('click', () => {
-      appendCurrentToHistory();
-    });
-
+    document.getElementById('log-value').addEventListener('click', () => appendCurrentToHistory());
     document.getElementById('clear-history').addEventListener('click', () => {
-      if (confirm('Clear all saved values?')) clearHistory();
+      if (confirm('Clear all saved entries?')) clearHistory();
     });
 
     // ===== Keyboard shortcuts =====
@@ -350,36 +440,36 @@
       const shift = e.shiftKey;
 
       // Only act on keys we use; otherwise let native behavior through
-      if (['ArrowUp','ArrowDown','Home','End','Enter'].includes(key) || key.toLowerCase() === 'r') {
-        e.preventDefault();
-      } else {
-        return; // ignore other keys
-      }
+      const keyLower = key.toLowerCase();
+      const handledKeys = ['arrowup','arrowdown','home','end','enter','r','b','n'];
+      if (handledKeys.includes(keyLower)) e.preventDefault(); else return;
 
-      // Compute deltas
-      if (key === 'ArrowUp') {
+      if (keyLower === 'arrowup') {
         if (shift) applyDelta({ hours: 1 });
         else if (ctrl) applyDelta({ minutes: 5 });
         else applyDelta({ minutes: 1 });
-      } else if (key === 'ArrowDown') {
+      } else if (keyLower === 'arrowdown') {
         if (shift) applyDelta({ hours: -1 });
         else if (ctrl) applyDelta({ minutes: -5 });
         else applyDelta({ minutes: -1 });
-      } else if (key === 'Home') {
+      } else if (keyLower === 'home') {
         const d = getCurrentDate();
         d.setMinutes(0, 0, 0);
         dtInput.value = toDatetimeLocalValue(d);
         updateLabels(d);
-      } else if (key === 'End') {
+      } else if (keyLower === 'end') {
         const d = getCurrentDate();
         d.setMinutes(59, 0, 0);
         dtInput.value = toDatetimeLocalValue(d);
         updateLabels(d);
-      } else if (key.toLowerCase() === 'r') {
+      } else if (keyLower === 'r') {
         setNow();
-      } else if (key === 'Enter') {
-        // Save value
+      } else if (keyLower === 'enter') {
         appendCurrentToHistory();
+      } else if (keyLower === 'b') {
+        billableInput.checked = !billableInput.checked;
+      } else if (keyLower === 'n') {
+        noteInput.focus();
       }
     }
 
@@ -398,4 +488,3 @@
   </script>
 </body>
 </html>
-``

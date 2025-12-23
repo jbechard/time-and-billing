@@ -13,7 +13,7 @@
       line-height: 1.4;
     }
     .card {
-      max-width: 520px;
+      max-width: 720px;
       border: 1px solid #ccc;
       border-radius: 10px;
       padding: 1rem;
@@ -98,6 +98,41 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.9em;
     }
+    /* History styles */
+    .history {
+      margin-top: 1.5rem;
+    }
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 0.5rem 0 0 0;
+      border-top: 1px solid #ddd;
+    }
+    .history-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    .history-item .value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .history-item .elapsed {
+      color: #555;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+    .empty {
+      color: #777;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
     @media (pointer: coarse) {
       .spin-group > button { padding: 0.8rem 1rem; }
     }
@@ -132,12 +167,23 @@
       <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
       <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
       <kbd>R</kbd> = reset to now,&nbsp;
-      <kbd>Enter</kbd> = log value
+      <kbd>Enter</kbd> = save value
     </p>
 
     <div class="actions">
       <button type="button" id="reset-now" class="secondary">Reset to now</button>
-      <button type="button" id="log-value">Log value</button>
+      <button type="button" id="log-value">Save value</button>
+      <button type="button" id="clear-history" class="secondary" title="Clear saved values">Clear history</button>
+    </div>
+
+    <!-- History -->
+    <div class="history" aria-live="polite">
+      <div class="history-header">
+        <h2 style="margin: 0;">Saved values</h2>
+        <small id="count"></small>
+      </div>
+      <ul id="history-list" class="history-list" aria-label="Saved date/time values"></ul>
+      <p id="history-empty" class="empty" hidden>No saved values yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
     </div>
   </div>
 
@@ -161,9 +207,25 @@
       return new Date(y, (m - 1), d, hh, mm, 0, 0);
     }
 
+    function formatElapsed(ms) {
+      // Format as +HH:MM:SS (supports >24h)
+      const sign = ms < 0 ? '-' : '+';
+      const abs = Math.abs(ms);
+      const totalSeconds = Math.floor(abs / 1000);
+      const hh = Math.floor(totalSeconds / 3600);
+      const mm = Math.floor((totalSeconds % 3600) / 60);
+      const ss = totalSeconds % 60;
+      return `${sign}${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    }
+
     const dtInput = document.getElementById('dt');
     const hourLabel = document.getElementById('hour-label');
     const minuteLabel = document.getElementById('minute-label');
+    const historyList = document.getElementById('history-list');
+    const historyEmpty = document.getElementById('history-empty');
+    const countEl = document.getElementById('count');
+
+    const STORAGE_KEY = 'quick-date-entry-history';
 
     function setNow() {
       const now = new Date();
@@ -191,8 +253,78 @@
       updateLabels(d);
     }
 
-    // Initialize
+    // ===== History persistence & rendering =====
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        // Normalize: expect array of ISO-like strings or numbers
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveHistory(history) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    }
+
+    function renderHistory() {
+      const history = loadHistory();
+      historyList.innerHTML = '';
+
+      countEl.textContent = history.length ? `${history.length} saved` : '';
+      historyEmpty.hidden = history.length > 0;
+
+      if (!history.length) return;
+
+      // We will display in chronological order (oldest first)
+      for (let i = 0; i < history.length; i++) {
+        const valueStr = history[i]; // "YYYY-MM-DDTHH:MM"
+        const current = fromDatetimeLocalValue(valueStr);
+        const prev = i > 0 ? fromDatetimeLocalValue(history[i - 1]) : null;
+        const li = document.createElement('li');
+        li.className = 'history-item';
+
+        const valueEl = document.createElement('span');
+        valueEl.className = 'value';
+        valueEl.textContent = valueStr;
+
+        const elapsedEl = document.createElement('span');
+        elapsedEl.className = 'elapsed';
+        if (prev) {
+          const deltaMs = current - prev;
+          elapsedEl.textContent = formatElapsed(deltaMs);
+          elapsedEl.title = `Δ from previous: ${formatElapsed(deltaMs)} (${prev.toLocaleString()})`;
+        } else {
+          elapsedEl.textContent = '—'; // first entry has no previous
+          elapsedEl.title = 'No previous value';
+        }
+
+        li.appendChild(valueEl);
+        li.appendChild(elapsedEl);
+        historyList.appendChild(li);
+      }
+    }
+
+    function appendCurrentToHistory() {
+      const currentStr = dtInput.value;
+      if (!currentStr) return;
+      const history = loadHistory();
+      history.push(currentStr);
+      saveHistory(history);
+      renderHistory();
+    }
+
+    function clearHistory() {
+      localStorage.removeItem(STORAGE_KEY);
+      renderHistory();
+    }
+
+    // ===== Initialize =====
     setNow();
+    renderHistory();
 
     // Button wiring
     document.getElementById('hour-inc').addEventListener('click', () => applyDelta({ hours: 1 }));
@@ -202,11 +334,13 @@
 
     dtInput.addEventListener('input', () => updateLabels(getCurrentDate()));
     document.getElementById('reset-now').addEventListener('click', setNow);
+
     document.getElementById('log-value').addEventListener('click', () => {
-      const d = getCurrentDate();
-      console.log('Local datetime:', dtInput.value);
-      console.log('JS Date (local representation):', d);
-      alert(`Current value (hello world): ${dtInput.value}`);
+      appendCurrentToHistory();
+    });
+
+    document.getElementById('clear-history').addEventListener('click', () => {
+      if (confirm('Clear all saved values?')) clearHistory();
     });
 
     // ===== Keyboard shortcuts =====
@@ -244,7 +378,8 @@
       } else if (key.toLowerCase() === 'r') {
         setNow();
       } else if (key === 'Enter') {
-        document.getElementById('log-value').click();
+        // Save value
+        appendCurrentToHistory();
       }
     }
 
@@ -263,3 +398,4 @@
   </script>
 </body>
 </html>
+``

@@ -21,7 +21,7 @@
     label {
       font-weight: 600;
       display: block;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.35rem;
     }
     .row {
       display: flex;
@@ -29,12 +29,47 @@
       align-items: center;
       flex-wrap: wrap;
     }
-    input[type="datetime-local"], input[type="text"] {
+
+    /* Time + Note side-by-side */
+    .row-time-note {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;   /* align labels at the top */
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .time-field {
+      flex: 1 1 280px;
+      min-width: 240px;
+    }
+    .note-field {
+      flex: 1 1 320px;
+      min-width: 260px;
+    }
+    .time-field input[type="datetime-local"] {
       padding: 0.4rem;
       font-size: 1rem;
       width: 100%;
-      max-width: 320px;
+      box-sizing: border-box;
     }
+    .note-field textarea {
+      font: inherit;
+      line-height: 1.3;
+      padding: 0.4rem;
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical; /* allow expand if needed */
+      min-height: calc(1em * 1.3 * 2 + 0.8rem); /* approx two lines + padding */
+      /* If you want fixed height exactly two lines:
+         height: calc(1em * 1.3 * 2 + 0.8rem);
+         resize: none; */
+    }
+
     .spin-group {
       display: inline-flex;
       align-items: stretch;
@@ -189,12 +224,24 @@
 </head>
 <body>
   <div class="card" role="group" aria-label="Quick date entry">
-    <label for="dt">Date &amp; time</label>
-    <div class="row">
-      <input id="dt" type="datetime-local" step="60" aria-describedby="kb-help" />
+
+    <!-- Time + Note side-by-side -->
+    <div class="row-time-note">
+      <!-- Left: Date & time -->
+      <div class="field time-field">
+        <label for="dt">Date &amp; time</label>
+        <input id="dt" type="datetime-local" step="60" aria-describedby="kb-help" />
+      </div>
+
+      <!-- Right: Note (two lines tall) -->
+      <div class="field note-field">
+        <label for="note">Note</label>
+        <textarea id="note" rows="2" placeholder="Add a note (optional)"></textarea>
+      </div>
     </div>
 
-    <div class="row" style="margin-top: 0.75rem;">
+    <!-- Hour/Minute spin buttons -->
+    <div class="row">
       <!-- Hour spin -->
       <div class="spin-group" aria-label="Adjust hour">
         <button type="button" id="hour-dec" aria-label="Decrement hour">−</button>
@@ -208,30 +255,24 @@
         <span class="spin-label" id="minute-label" aria-live="polite">Min: —</span>
         <button type="button" id="min-inc" aria-label="Increment minute">+</button>
       </div>
-    </div>
 
-    <!-- Note and Billable -->
-    <div class="row" style="margin-top: 0.75rem;">
-      <div class="inline" style="flex: 1 1 320px;">
-        <label for="note" style="margin:0;">Note</label>
-      </div>
-      <input id="note" type="text" placeholder="Add a note (optional)" />
-      <label class="inline" for="billable" title="Billable by default">
+      <!-- Billable checkbox -->
+      <label class="inline" for="billable" title="Billable by default" style="margin-left:auto;">
         <input id="billable" type="checkbox" checked />
         Billable
       </label>
     </div>
 
-	<p class="hint" id="kb-help">
-	  Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
-	  <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
-	  <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
-	  <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
-	  <kbd>Enter</kbd> = save,&nbsp;
-	  <kbd>Ctrl</kbd>+<kbd>B</kbd> = toggle billable,&nbsp;
-	  <kbd>Ctrl</kbd>+<kbd>R</kbd> = reset to now,&nbsp;
-	  <kbd>Ctrl</kbd>+<kbd>N</kbd> = focus note
-	</p>
+    <p class="hint" id="kb-help">
+      Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
+      <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
+      <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
+      <kbd>Enter</kbd> = save,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>B</kbd> = toggle billable,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>R</kbd> = reset to now,&nbsp;
+      <kbd>N</kbd> = focus note
+    </p>
 
     <div class="actions">
       <button type="button" id="reset-now" class="secondary">Reset to now</button>
@@ -288,7 +329,7 @@
     const dtInput = document.getElementById('dt');
     const hourLabel = document.getElementById('hour-label');
     const minuteLabel = document.getElementById('minute-label');
-    const noteInput = document.getElementById('note');
+    const noteInput = document.getElementById('note');      // textarea
     const billableInput = document.getElementById('billable');
 
     const groupsContainer = document.getElementById('groups-container');
@@ -323,7 +364,6 @@
       updateLabels(d);
     }
 
-    // ===== History persistence & rendering =====
     /**
      * History entry shape:
      * { datetime: "YYYY-MM-DDTHH:MM", note: string, billable: boolean }
@@ -493,7 +533,7 @@
       const history = loadHistory();
 
       // Rule: If the entry would become the oldest overall AND is NOT "Start of day." (non-billable),
-      // reject the save and raise an error.
+      // reject the save and raise an error. No ongoing checks; only at save time.
       const isStartOfDayEntry = (entry.note === 'Start of day.' && entry.billable === false);
       if (wouldBecomeOldest(entry.datetime, history) && !isStartOfDayEntry) {
         alert('Cannot save: the oldest entry must be the “Start of day.” marker (non-billable).');
@@ -531,7 +571,7 @@
         note: 'Start of day.',
         billable: false
       };
-      // Save; this will pass the rule (it IS the SOD marker even if oldest)
+      // Save; this will pass the rule (SOD marker is allowed to be oldest)
       tryAppendEntry(entry);
       // Do not clear user's note for this timehack
     }
@@ -559,83 +599,80 @@
       if (confirm('Clear all saved entries?')) clearHistory();
     });
 
-    // ✅ After changing the billable checkbox, blur and move focus to the note field
+    // After changing the billable checkbox (click/touch), blur and move focus to note
     billableInput.addEventListener('change', () => {
       billableInput.blur();
       noteInput.focus();
     });
 
-    // ===== Keyboard shortcuts =====
-  function handleKey(e) {
-    const keyLower = e.key.toLowerCase();
-    const ctrl = e.ctrlKey || e.metaKey; // treat Cmd (macOS) like Ctrl
-    const shift = e.shiftKey;
-  
-    // --- Time adjustments (always enabled) ---
-    if (keyLower === 'arrowup') {
-      e.preventDefault();
-      if (shift) applyDelta({ hours: 1 });
-      else if (ctrl) applyDelta({ minutes: 5 });
-      else applyDelta({ minutes: 1 });
-      return;
-    }
-    if (keyLower === 'arrowdown') {
-      e.preventDefault();
-      if (shift) applyDelta({ hours: -1 });
-      else if (ctrl) applyDelta({ minutes: -5 });
-      else applyDelta({ minutes: -1 });
-      return;
-    }
-    if (keyLower === 'home') {
-      e.preventDefault();
-      const d = getCurrentDate();
-      d.setMinutes(0, 0, 0);
-      dtInput.value = toDatetimeLocalValue(d);
-      updateLabels(d);
-      return;
-    }
-    if (keyLower === 'end') {
-      e.preventDefault();
-      const d = getCurrentDate();
-      d.setMinutes(59, 0, 0);
-      dtInput.value = toDatetimeLocalValue(d);
-      updateLabels(d);
-      return;
-    }
-  
-    // --- Enter saves (always enabled) ---
-    if (keyLower === 'enter') {
-      e.preventDefault();
-      appendCurrentToHistory();
-      return;
-    }
-    
-    // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new brower window ---
-    if (keyLower === 'n') {
-      if (!(e.target === noteInput)) e.preventDefault();
-      noteInput.focus();
-      return;
-    }
-  
-  
-    // --- Alpha shortcuts: require Ctrl/Cmd ---
-    if (ctrl) {
-      if (keyLower === 'b') {
+    // ===== Keyboard shortcuts (your chosen version) =====
+    function handleKey(e) {
+      const keyLower = e.key.toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey; // treat Cmd (macOS) like Ctrl
+      const shift = e.shiftKey;
+
+      // --- Time adjustments (always enabled) ---
+      if (keyLower === 'arrowup') {
         e.preventDefault();
-        billableInput.checked = !billableInput.checked;
+        if (shift) applyDelta({ hours: 1 });
+        else if (ctrl) applyDelta({ minutes: 5 });
+        else applyDelta({ minutes: 1 });
         return;
       }
-      if (keyLower === 'r') {
+      if (keyLower === 'arrowdown') {
         e.preventDefault();
-        setNow();
+        if (shift) applyDelta({ hours: -1 });
+        else if (ctrl) applyDelta({ minutes: -5 });
+        else applyDelta({ minutes: -1 });
         return;
       }
+      if (keyLower === 'home') {
+        e.preventDefault();
+        const d = getCurrentDate();
+        d.setMinutes(0, 0, 0);
+        dtInput.value = toDatetimeLocalValue(d);
+        updateLabels(d);
+        return;
+      }
+      if (keyLower === 'end') {
+        e.preventDefault();
+        const d = getCurrentDate();
+        d.setMinutes(59, 0, 0);
+        dtInput.value = toDatetimeLocalValue(d);
+        updateLabels(d);
+        return;
+      }
+
+      // --- Enter saves (always enabled) ---
+      if (keyLower === 'enter') {
+        e.preventDefault();
+        appendCurrentToHistory();
+        return;
+      }
+      
+      // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new brower window ---
+      if (keyLower === 'n') {
+        if (!(e.target === noteInput)) e.preventDefault();
+        noteInput.focus();
+        return;
+      }
+
+      // --- Alpha shortcuts: require Ctrl/Cmd ---
+      if (ctrl) {
+        if (keyLower === 'b') {
+          e.preventDefault();
+          billableInput.checked = !billableInput.checked;
+          return;
+        }
+        if (keyLower === 'r') {
+          e.preventDefault();
+          setNow();
+          return;
+        }
+      }
     }
-  
-  }
 
-
-    // Bind at both input and document level
+    // Bind globally (and optionally to the datetime input)
     dtInput.addEventListener('keydown', handleKey);
     document.addEventListener('keydown', handleKey);
   </script>

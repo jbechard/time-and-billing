@@ -245,138 +245,172 @@
       return newMs < minMs;
     }
 
+
+
+
+
+//--------------------------------------------------------------------------------------------------------
+
+function renderWorkedEntries() {
+  workedEntriesList.innerHTML = '';
+  workedEntries.forEach((entry, index) => {
+    const li = document.createElement('li');
+    li.textContent = `${entry.datetime} | ${entry.hours}h ${entry.minutes}m | ${entry.note} | ${entry.billable ? 'Billable' : 'Non-billable'}`;
+
+    // Create Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'x';
+    
+	deleteBtn.addEventListener('click', () => {
+      workedEntries.splice(index, 1); // Remove entry
+      localStorage.setItem('workedEntries', JSON.stringify(workedEntries)); // Update storage
+      renderWorkedEntries(); // Refresh list
+    });
+
+    li.appendChild(deleteBtn);
+    workedEntriesList.appendChild(li);
+  });
+}
+
+//--------------------------------------------------------------------------------------------------------
     // ===== Rendering (newest-first, grouped by date, with billable subtotal rule) =====
-    function renderHistory() {
-      const history = loadHistory();
 
-      const billableCount = history.filter(h => h.billable).length;
-      countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
-      historyEmpty.hidden = history.length > 0;
-      groupsContainer.innerHTML = '';
-      if (!history.length) return;
+function renderHistory() {
+  const history = loadHistory();
 
-      // 1) Sort entries newest-first
-      const sorted = history
-        .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
-        .sort((a, b) => b.dateObj - a.dateObj);
+  const billableCount = history.filter(h => h.billable).length;
+  countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
+  historyEmpty.hidden = history.length > 0;
+  groupsContainer.innerHTML = '';
+  if (!history.length) return;
 
-      // 2) Augment with delta to immediate prior (next older) entry.
-      //    Start-of-day entries DISPLAY zero elapsed regardless of the prior time.
-      const augmented = sorted.map((e, i, arr) => {
-        const prior = arr[i + 1];
-        const deltaMs = prior ? (e.dateObj - prior.dateObj) : null;
-        const isStartOfDay = (e.note === 'Start of day.' && !e.billable);
-        const displayDeltaMs = isStartOfDay ? 0 : deltaMs;
-        return { ...e, deltaMs, displayDeltaMs, isStartOfDay };
+  // 1) Sort entries newest-first
+  const sorted = history
+    .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
+    .sort((a, b) => b.dateObj - a.dateObj);
+
+  // 2) Augment with delta to immediate prior (next older) entry.
+  const augmented = sorted.map((e, i, arr) => {
+    const prior = arr[i + 1];
+    const deltaMs = prior ? (e.dateObj - prior.dateObj) : null;
+    const isStartOfDay = (e.note === 'Start of day.' && !e.billable);
+    const displayDeltaMs = isStartOfDay ? 0 : deltaMs;
+    return { ...e, deltaMs, displayDeltaMs, isStartOfDay };
+  });
+
+  // 3) Daily subtotal for billable entries
+  const billableElapsedByDate = {};
+  for (let i = 0; i < augmented.length; i++) {
+    const cur = augmented[i];
+    const prior = augmented[i + 1];
+    if (!cur.billable) continue;
+    if (prior == null || cur.deltaMs == null) continue;
+    const curKey = getDateKey(cur.datetime);
+    billableElapsedByDate[curKey] = (billableElapsedByDate[curKey] || 0) + cur.deltaMs;
+  }
+
+  // 4) Group by date (DESC)
+  const groupsMap = new Map();
+  for (const item of augmented) {
+    const key = getDateKey(item.datetime);
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key).push(item);
+  }
+  const groupKeysDesc = Array.from(groupsMap.keys()).sort((a, b) => new Date(b) - new Date(a));
+
+  // 5) Render groups
+  for (const key of groupKeysDesc) {
+    const entries = groupsMap.get(key);
+
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'group';
+
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'group-header';
+
+    const titleEl = document.createElement('h3');
+    titleEl.className = 'group-title';
+    titleEl.textContent = key;
+
+    const subtotalEl = document.createElement('div');
+    subtotalEl.className = 'group-subtotal';
+    const ms = billableElapsedByDate[key] || 0;
+    const elapsedText = ms ? formatElapsed(ms) : '—';
+    subtotalEl.textContent = `Billable elapsed: ${elapsedText}`;
+
+    headerDiv.appendChild(titleEl);
+    headerDiv.appendChild(subtotalEl);
+
+    const listEl = document.createElement('ul');
+    listEl.className = 'history-list';
+
+    for (const entry of entries) {
+      const li = document.createElement('li');
+      li.className = 'history-item';
+
+      // Left inline: time · pill · note
+      const leftInline = document.createElement('div');
+      leftInline.className = 'left-inline';
+
+      const timeOnlyEl = document.createElement('span');
+      timeOnlyEl.className = 'time-only';
+      timeOnlyEl.textContent = getTimePart(entry.datetime);
+
+      const sep1 = document.createElement('span');
+      sep1.className = 'sep';
+      sep1.textContent = '·';
+
+      const billableEl = document.createElement('span');
+      billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
+      billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
+
+      const sep2 = document.createElement('span');
+      sep2.className = 'sep';
+      sep2.textContent = '·';
+
+      const noteInline = document.createElement('span');
+      noteInline.className = 'note-inline';
+      noteInline.textContent = entry.note ? entry.note : '—';
+
+      leftInline.appendChild(timeOnlyEl);
+      leftInline.appendChild(sep1);
+      leftInline.appendChild(billableEl);
+      leftInline.appendChild(sep2);
+      leftInline.appendChild(noteInline);
+
+      // Right inline: elapsed + delete button
+      const rightInline = document.createElement('div');
+      rightInline.className = 'right-inline';
+
+      const elapsedEl = document.createElement('span');
+      elapsedEl.className = 'elapsed';
+      elapsedEl.textContent = entry.displayDeltaMs === null ? '—' : formatElapsed(entry.displayDeltaMs);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'x';
+      deleteBtn.className = 'delete-btn';
+
+      deleteBtn.addEventListener('click', () => {
+        const updatedHistory = loadHistory().filter(h => h.datetime !== entry.datetime);
+        saveHistory(updatedHistory);
+        renderHistory();
       });
 
-      // 3) Daily subtotal:
-      //    For each BILLABLE entry, add its gap to the subtotal of its OWN date,
-      //    regardless of the prior entry's date or billable flag.
-      const billableElapsedByDate = {};
-      for (let i = 0; i < augmented.length; i++) {
-        const cur = augmented[i];
-        const prior = augmented[i + 1];
-        if (!cur.billable) continue;
-        if (prior == null || cur.deltaMs == null) continue; // no prior -> no gap
-        const curKey = getDateKey(cur.datetime);
-        billableElapsedByDate[curKey] = (billableElapsedByDate[curKey] || 0) + cur.deltaMs;
-      }
+      rightInline.appendChild(elapsedEl);
+      rightInline.appendChild(deleteBtn);
 
-      // 4) Group by date (DESC)
-      const groupsMap = new Map();
-      for (const item of augmented) {
-        const key = getDateKey(item.datetime);
-        if (!groupsMap.has(key)) groupsMap.set(key, []);
-        groupsMap.get(key).push(item);
-      }
-      const groupKeysDesc = Array.from(groupsMap.keys()).sort((a, b) => new Date(b) - new Date(a));
-
-      // 5) Render groups with COMPACT inline rows (time-only per record)
-      for (const key of groupKeysDesc) {
-        const entries = groupsMap.get(key);
-
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'group';
-
-        const headerDiv = document.createElement('div');
-        headerDiv.className = 'group-header';
-
-        const titleEl = document.createElement('h3');
-        titleEl.className = 'group-title';
-        titleEl.textContent = key;
-
-        const subtotalEl = document.createElement('div');
-        subtotalEl.className = 'group-subtotal';
-        const ms = billableElapsedByDate[key] || 0;
-        const elapsedText = ms ? formatElapsed(ms) : '—';
-        subtotalEl.textContent = `Billable elapsed: ${elapsedText}`;
-
-        headerDiv.appendChild(titleEl);
-        headerDiv.appendChild(subtotalEl);
-
-        const listEl = document.createElement('ul');
-        listEl.className = 'history-list';
-
-        for (const entry of entries) {
-          const li = document.createElement('li');
-          li.className = 'history-item';
-
-          // Inline left: time-only · pill · note (truncated)
-          const leftInline = document.createElement('div');
-          leftInline.className = 'left-inline';
-
-          const timeOnlyEl = document.createElement('span');
-          timeOnlyEl.className = 'time-only';
-          timeOnlyEl.textContent = getTimePart(entry.datetime); // HH:MM
-
-          const sep1 = document.createElement('span');
-          sep1.className = 'sep';
-          sep1.textContent = '·';
-
-          const billableEl = document.createElement('span');
-          billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
-          billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
-          billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
-
-          const sep2 = document.createElement('span');
-          sep2.className = 'sep';
-          sep2.textContent = '·';
-
-          const noteInline = document.createElement('span');
-          noteInline.className = 'note-inline';
-          noteInline.textContent = entry.note ? entry.note : '—';
-          if (entry.note) noteInline.title = entry.note;
-
-          leftInline.appendChild(timeOnlyEl);
-          leftInline.appendChild(sep1);
-          leftInline.appendChild(billableEl);
-          leftInline.appendChild(sep2);
-          leftInline.appendChild(noteInline);
-
-          // Right: elapsed (inline, right aligned)
-          const elapsedEl = document.createElement('span');
-          elapsedEl.className = 'elapsed';
-          if (entry.displayDeltaMs === null) {
-            elapsedEl.textContent = '—';
-            elapsedEl.title = 'No prior entry';
-          } else {
-            elapsedEl.textContent = formatElapsed(entry.displayDeltaMs);
-            elapsedEl.title = entry.isStartOfDay
-              ? 'Start of day (elapsed forced to zero)'
-              : 'Δ from prior saved entry';
-          }
-
-          li.appendChild(leftInline);
-          li.appendChild(elapsedEl);
-          listEl.appendChild(li);
-        }
-
-        groupDiv.appendChild(headerDiv);
-        groupDiv.appendChild(listEl);
-        groupsContainer.appendChild(groupDiv);
-      }
+      li.appendChild(leftInline);
+      li.appendChild(rightInline);
+      listEl.appendChild(li);
     }
+
+    groupDiv.appendChild(headerDiv);
+    groupDiv.appendChild(listEl);
+    groupsContainer.appendChild(groupDiv);
+  }
+}
+``
+
 
     // ===== Save-time rule enforcement & entry creation =====
     function tryAppendEntry(entry) {

@@ -267,3 +267,52 @@ kbd {
 @media (pointer: coarse) {
   .spin-group > button { padding: 0.8rem 1rem; }
 }
+
+/* Each history row */
+.history-item {
+  display: flex;
+  justify-content: space-between; /* Left content on left, right content on right */
+  align-items: center;            /* Vertically center everything */
+  padding: 4px 20px;
+  padding-right: 5px;
+  border-bottom: 1px solid #ddd;
+  font-size: 14px;
+}
+
+/* Left inline section (time, billable pill, note) */
+.left-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px; /* Space between elements */
+}
+
+/* Right inline section (elapsed time + delete button) */
+.right-inline {
+  display: flex;
+  justify-content: flex-end; /* Push to far right */
+  align-items: center;
+  gap: 10px; /* Space between elapsed time and button */
+}
+
+/* Delete button styling */
+
+.delete-btn {
+  background: none;        /* Remove background */
+  color: #d9534f;          /* Red color for the X */
+  border: none;            /* No border */
+  font-size: 16px;         /* Slightly larger for visibility */
+  font-weight: bold;       /* Make it bold */
+  cursor: pointer;
+  padding: 0;              /* Remove padding */
+  line-height: 1;
+}
+
+.delete-btn:hover {
+  color: #c9302c;          /* Darker red on hover */
+}
+
+/* Optional: style elapsed time for clarity */
+.elapsed {
+  font-weight: bold;
+  color: #555;
+}

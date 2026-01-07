@@ -2,313 +2,684 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Time Worked & Time Billed</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-  }
-  .container {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
-  }
-  .section {
-    flex: 1;
-    border: 1px solid #ccc;
-    padding: 15px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    background: #fff;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-  }
-  th, td {
-    border: 1px solid #ccc;
-    padding: 8px;
-    text-align: center;
-  }
-  th {
-    background-color: #f4f4f4;
-  }
-  input[type="number"], input[type="text"], input[type="datetime-local"] {
-    margin: 5px;
-  }
-  .week-label {
-    font-weight: bold;
-  }
-  button {
-    cursor: pointer;
-    margin: 5px;
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quick Time Entry</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="container">
-  <!-- LEFT: Time Worked -->
-  <div class="section" id="time-worked">
-    <h2>Quick Time Entry</h2>
-    <form id="worked-form">
-      <label>Date & Time:</label>
-      <input type="datetime-local" id="worked-datetime" required>
-      <br>
-      <label>Hours:</label>
-      <input type="number" id="worked-hours" step="1" min="0" value="0">
-      <label>Minutes:</label>
-      <input type="number" id="worked-minutes" step="1" min="0" max="59" value="0">
-      <br>
-      <label>Note:</label>
-      <input type="text" id="worked-note">
-      <br>
-      <label><input type="checkbox" id="worked-billable"> Billable</label>
-      <br><br>
-      <button type="button" id="reset-now">Reset to now</button>
-      <button type="submit">Save value</button>
-      <button type="button" id="clear-history">Clear history</button>
-      <button type="button" id="export-csv">Export CSV</button>
-    </form>
-    <h3>Saved entries (newest first)</h3>
-    <ul id="worked-entries"></ul>
+  <div class="card" role="group" id="time-worked" aria-label="Quick date entry">
+
+    <!-- Time + Note side-by-side -->
+    <div class="row-time-note">
+      <!-- Left: Date & time -->
+      <div class="field time-field">
+        <label for="dt">Date &amp; time</label>
+        <input id="dt" type="datetime-local" step="60" aria-describedby="kb-help" />
+      </div>
+
+      <!-- Right: Note (two lines tall) -->
+      <div class="field note-field">
+        <label for="note">Note</label>
+        <textarea id="note" rows="2" placeholder="Add a note (optional)"></textarea>
+      </div>
+    </div>
+
+    <!-- Hour/Minute spin + Billable inline -->
+    <div class="row">
+      <!-- Hour spin -->
+      <div class="spin-group" aria-label="Adjust hour">
+        <button type="button" id="hour-dec" aria-label="Decrement hour">−</button>
+        <span class="spin-label" id="hour-label" aria-live="polite">Hour: —</span>
+        <button type="button" id="hour-inc" aria-label="Increment hour">+</button>
+      </div>
+
+      <!-- Minute spin -->
+      <div class="spin-group" aria-label="Adjust minute">
+        <button type="button" id="min-dec" aria-label="Decrement minute">−</button>
+        <span class="spin-label" id="minute-label" aria-live="polite">Min: —</span>
+        <button type="button" id="min-inc" aria-label="Increment minute">+</button>
+      </div>
+
+      <!-- Billable checkbox (aligned right) -->
+      <label class="inline" for="billable" title="Billable by default" style="margin-left:auto;">
+        <input id="billable" type="checkbox" checked />
+        Billable
+      </label>
+    </div>
+
+    <p class="hint" id="kb-help">
+      Keyboard: <kbd>↑</kbd>/<kbd>↓</kbd> = ±1 minute,&nbsp;
+      <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±1 hour,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> = ±5 minutes,&nbsp;
+      <kbd>Home</kbd>/<kbd>End</kbd> = 00/59 minutes,&nbsp;
+      <kbd>Enter</kbd> = save,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>B</kbd> = toggle billable,&nbsp;
+      <kbd>Ctrl</kbd>+<kbd>R</kbd> = reset to now,&nbsp;
+      <kbd>N</kbd> = focus note
+    </p>
+
+    <div class="actions">
+      <button type="button" id="reset-now" class="secondary">Reset to now</button>
+      <button type="button" id="log-value">Save value</button>
+      <button type="button" id="start-day" class="secondary" title="Save an entry with note 'Start of day.' and billable = FALSE">Start of day timehack</button>
+      <button type="button" id="export-csv" class="secondary" title="Export saved entries to CSV">Export CSV</button>
+      <button type="button" id="clear-history" class="secondary" title="Clear saved entries">Clear history</button>
+    </div>
+
+    <!-- History -->
+    <div class="history" aria-live="polite">
+      <div class="history-header">
+        <h2 style="margin: 0;">Saved entries (newest first)</h2>
+        <small id="count"></small>
+      </div>
+      <div id="groups-container"></div>
+      <p id="history-empty" class="empty" hidden>No saved entries yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
+    </div>
   </div>
-
-  <!-- RIGHT: Time Billed -->
-  <div class="section" id="time-billed">
-    <h2>Time Billed</h2>
-    <form id="billed-form">
-      <label for="week-start">Week Starting (Monday):</label>
-      <input type="date" id="week-start" required>
-      <br><br>
-      <label>Mon:</label> <input type="number" step="0.1" min="0" id="mon" required>
-      <label>Tue:</label> <input type="number" step="0.1" min="0" id="tue" required>
-      <label>Wed:</label> <input type="number" step="0.1" min="0" id="wed" required>
-      <label>Thu:</label> <input type="number" step="0.1" min="0" id="thu" required>
-      <label>Fri:</label> <input type="number" step="0.1" min="0" id="fri" required>
-      <br><br>
-      <button type="submit">Save Week</button>
-    </form>
-
-    <table id="billed-table">
-      <thead>
-        <tr>
-          <th>Week</th>
-          <th>Mon</th>
-          <th>Tue</th>
-          <th>Wed</th>
-          <th>Thu</th>
-          <th>Fri</th>
-          <th>Total</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <div class="card" role="group" aria-label="Billed Time entry">
+     <div class="section" id="time-billed">
+      <h2>Time Billed</h2>
+      <form id="billed-form">
+	    <table id="billed-input-table">
+	    	<thead>
+	    		<tr>
+	    		<th>Week</th>
+	    		<th>Mon</th>
+	    		<th>Tue</th>
+	    		<th>Wed</th>
+	    		<th>Thu</th>
+	    		<th>Fri</th>
+	    		<th>Action</th>
+	    		</tr>
+	    	</thead>
+	    	<tbody>
+	    		<tr>
+	    		<td><input type="date" id="week-start" required></td>
+	    		<td><input type="number" step="1" min="0" max="8" size="5" id="mon" required></td>        
+	    		<td><input type="number" step="1" min="0" max="8" size="5" id="tue" required></td>        
+	    		<td><input type="number" step="1" min="0" max="8" size="5" id="wed" required></td>        
+	    		<td><input type="number" step="1" min="0" max="8" size="5" id="thu" required></td>        
+	    		<td><input type="number" step="1" min="0" max="8" size="5" id="fri" required></td>
+	    		<td><button type="submit">Save Week</button></td>
+	    		</tr>
+	    	</tbody>
+	    </table>
+      </form>
+      <table id="billed-table">
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>Mon</th>
+            <th>Tue</th>
+            <th>Wed</th>
+            <th>Thu</th>
+            <th>Fri</th>
+            <th>Total</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </div>
+  <script>
+    // ===== Helpers for local-time datetime-local formatting =====
+    function pad(n) { return String(n).padStart(2, '0'); }
 
-<script>
-/* ---------------- TIME WORKED ---------------- */
-const workedEntriesList = document.getElementById('worked-entries');
-let workedEntries = JSON.parse(localStorage.getItem('workedEntries')) || [];
-
-function renderWorkedEntries() {
-  workedEntriesList.innerHTML = '';
-  workedEntries.forEach((entry, index) => {
-    const li = document.createElement('li');
-    li.textContent = `${entry.datetime} | ${entry.hours}h ${entry.minutes}m | ${entry.note} | ${entry.billable ? 'Billable' : 'Non-billable'}`;
-    workedEntriesList.appendChild(li);
-  });
-}
-
-document.getElementById('worked-form').addEventListener('submit', e => {
-  e.preventDefault();
-  const datetime = document.getElementById('worked-datetime').value;
-  const hours = parseInt(document.getElementById('worked-hours').value);
-  const minutes = parseInt(document.getElementById('worked-minutes').value);
-  const note = document.getElementById('worked-note').value;
-  const billable = document.getElementById('worked-billable').checked;
-
-  workedEntries.unshift({ datetime, hours, minutes, note, billable });
-  localStorage.setItem('workedEntries', JSON.stringify(workedEntries));
-  renderWorkedEntries();
-  e.target.reset();
-});
-
-document.getElementById('reset-now').addEventListener('click', () => {
-  document.getElementById('worked-datetime').value = new Date().toISOString().slice(0,16);
-});
-
-document.getElementById('clear-history').addEventListener('click', () => {
-  if (confirm('Clear all worked entries?')) {
-    workedEntries = [];
-    localStorage.removeItem('workedEntries');
-    renderWorkedEntries();
-  }
-});
-
-document.getElementById('export-csv').addEventListener('click', () => {
-  let csv = 'DateTime,Hours,Minutes,Note,Billable\n';
-  workedEntries.forEach(e => {
-    csv += `${e.datetime},${e.hours},${e.minutes},${e.note},${e.billable}\n`;
-  });
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'worked_entries.csv';
-  a.click();
-});
-
-renderWorkedEntries();
-
-/* ---------------- TIME BILLED ---------------- */
-const billedTableBody = document.querySelector('#billed-table tbody');
-let weeks = JSON.parse(localStorage.getItem('billedWeeks')) || [];
-
-function renderTable() {
-  billedTableBody.innerHTML = '';
-  weeks.forEach((week, index) => {
-    const row = document.createElement('tr');
-    const weekCell = document.createElement('td');
-    weekCell.textContent = week.weekStart;
-    row.appendChild(weekCell);
-
-    let total = 0;
-    ['Mon','Tue','Wed','Thu','Fri'].forEach(day => {
-      const cell = document.createElement('td');
-      const value = week.days[day];
-      cell.textContent = value.toFixed(1);
-      total += value;
-      row.appendChild(cell);
-    });
-
-    const totalCell = document.createElement('td');
-    totalCell.textContent = total.toFixed(1);
-    row.appendChild(totalCell);
-
-    const actionCell = document.createElement('td');
-    const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.style.backgroundColor = '#d9534f';
-    deleteBtn.style.color = '#fff';
-    deleteBtn.addEventListener('click', () => {
-      weeks.splice(index, 1);
-      localStorage.setItem('billedWeeks', JSON.stringify(weeks));
-      renderTable();
-    });
-    actionCell.appendChild(deleteBtn);
-    row.appendChild(actionCell);
-
-    billedTableBody.appendChild(row);
-  });
-}
-
-document.getElementById('billed-form').addEventListener('submit', e => {
-  e.preventDefault();
-  const weekStart = document.getElementById('week-start').value;
-  const mon = parseFloat(document.getElementById('mon').value);
-  const tue = parseFloat(document.getElementById('tue').value);
-  const wed = parseFloat(document.getElementById('wed').value);
-  const thu = parseFloat(document.getElementById('thu').value);
-  const fri = parseFloat(document.getElementById('fri').value);
-
-  if (weeks.some(w => w.weekStart === weekStart)) {
-    alert('This week is already saved.');
-    return;
-  }
-
-  const newWeek = { weekStart, days: { Mon: mon, Tue: tue, Wed: wed, Thu: thu, Fri: fri } };
-  weeks.push(newWeek);
-  weeks.sort((a,b) => new Date(b.weekStart) - new Date(a.weekStart));
-  localStorage.setItem('billedWeeks', JSON.stringify(weeks));
-  renderTable();
-  e.target.reset();
-});
-
-renderTable();
-
-
-// Keyboard shortcuts for Time Worked
-document.addEventListener('keydown', (e) => {
-  const hoursInput = document.getElementById('worked-hours');
-  const minutesInput = document.getElementById('worked-minutes');
-  const noteInput = document.getElementById('worked-note');
-  const billableCheckbox = document.getElementById('worked-billable');
-
-  let hours = parseInt(hoursInput.value) || 0;
-  let minutes = parseInt(minutesInput.value) || 0;
-
-  // Arrow keys for minute/hour adjustments
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    e.preventDefault();
-    const direction = e.key === 'ArrowUp' ? 1 : -1;
-
-    if (e.shiftKey) {
-      // Shift: ±1 hour
-      hours += direction;
-    } else if (e.ctrlKey) {
-      // Ctrl: ±5 minutes
-      minutes += direction * 5;
-    } else {
-      // Default: ±1 minute
-      minutes += direction;
+    function toDatetimeLocalValue(date) {
+      const y = date.getFullYear();
+      const m = pad(date.getMonth() + 1);
+      const d = pad(date.getDate());
+      const h = pad(date.getHours());
+      const min = pad(date.getMinutes());
+      return `${y}-${m}-${d}T${h}:${min}`;
     }
 
-    // Normalize minutes and hours
-    if (minutes >= 60) {
-      hours += Math.floor(minutes / 60);
-      minutes = minutes % 60;
-    } else if (minutes < 0) {
-      hours -= Math.ceil(Math.abs(minutes) / 60);
-      minutes = (minutes % 60 + 60) % 60;
+    function fromDatetimeLocalValue(value) {
+      const [datePart, timePart] = value.split('T');
+      const [y, m, d] = datePart.split('-').map(Number);
+      const [hh, mm] = timePart.split(':').map(Number);
+      return new Date(y, (m - 1), d, hh, mm, 0, 0);
     }
 
-    if (hours < 0) hours = 0;
+    function getDateKey(datetimeStr) {
+      return datetimeStr.split('T')[0]; // "YYYY-MM-DD"
+    }
 
-    hoursInput.value = hours;
-    minutesInput.value = minutes;
-  }
+    function getTimePart(datetimeStr) {
+      // returns "HH:MM"
+      return datetimeStr.split('T')[1];
+    }
 
-  // Home/End for minutes
-  if (e.key === 'Home') {
-    e.preventDefault();
-    minutesInput.value = 0;
-  }
-  if (e.key === 'End') {
-    e.preventDefault();
-    minutesInput.value = 59;
-  }
+    function formatElapsed(ms) {
+      const sign = ms < 0 ? '-' : '+';
+      const abs = Math.abs(ms);
+      const totalSeconds = Math.floor(abs / 1000);
+      const hh = Math.floor(totalSeconds / 3600);
+      const mm = Math.floor((totalSeconds % 3600) / 60);
+      const ss = totalSeconds % 60;
+      return `${sign}${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    }
 
-  // Enter to save
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    document.getElementById('worked-form').dispatchEvent(new Event('submit'));
-  }
+    const dtInput = document.getElementById('dt');
+    const hourLabel = document.getElementById('hour-label');
+    const minuteLabel = document.getElementById('minute-label');
+    const noteInput = document.getElementById('note');      // textarea
+    const billableInput = document.getElementById('billable');
 
-  // Ctrl+B toggle billable
-  if (e.ctrlKey && e.key.toLowerCase() === 'b') {
-    e.preventDefault();
-    billableCheckbox.checked = !billableCheckbox.checked;
-  }
+    const groupsContainer = document.getElementById('groups-container');
+    const historyEmpty = document.getElementById('history-empty');
+    const countEl = document.getElementById('count');
 
-  // Ctrl+R reset to now
-  if (e.ctrlKey && e.key.toLowerCase() === 'r') {
-    e.preventDefault();
-    document.getElementById('worked-datetime').value = new Date().toISOString().slice(0,16);
-  }
+    const STORAGE_KEY = 'quick-time-entry-history';
 
-  // N to focus note
-  if (e.key.toLowerCase() === 'n') {
-    e.preventDefault();
-    noteInput.focus();
-  }
-});
+    function setNow() {
+      const now = new Date();
+      now.setSeconds(0, 0);
+      dtInput.value = toDatetimeLocalValue(now);
+      updateLabels(now);
+    }
 
-</script>
+    function updateLabels(date) {
+      hourLabel.textContent = `Hour: ${pad(date.getHours())}`;
+      minuteLabel.textContent = `Min: ${pad(date.getMinutes())}`;
+    }
 
+    function getCurrentDate() {
+      if (!dtInput.value) return new Date();
+      return fromDatetimeLocalValue(dtInput.value);
+    }
+
+    function applyDelta({ hours = 0, minutes = 0 }) {
+      const d = getCurrentDate();
+      d.setMinutes(d.getMinutes() + minutes);
+      d.setHours(d.getHours() + hours);
+      d.setSeconds(0, 0);
+      dtInput.value = toDatetimeLocalValue(d);
+      updateLabels(d);
+    }
+
+    /**
+     * History entry shape:
+     * { datetime: "YYYY-MM-DDTHH:MM", note: string, billable: boolean }
+     */
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        const normalized = parsed.map(item => {
+          if (typeof item === 'string') {
+            return { datetime: item, note: '', billable: true };
+          } else {
+            return {
+              datetime: typeof item.datetime === 'string' ? item.datetime : '',
+              note: typeof item.note === 'string' ? item.note : '',
+              billable: item.billable !== undefined ? !!item.billable : true
+            };
+          }
+        }).filter(e => e.datetime);
+        return normalized;
+      } catch {
+        return [];
+      }
+    }
+
+    function saveHistory(history) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    }
+
+    // Helper: would the new entry become the oldest overall?
+    function wouldBecomeOldest(newDatetimeStr, history) {
+      const newMs = fromDatetimeLocalValue(newDatetimeStr).getTime();
+      if (history.length === 0) return true;
+      let minMs = Infinity;
+      for (const h of history) {
+        const ms = fromDatetimeLocalValue(h.datetime).getTime();
+        if (ms < minMs) minMs = ms;
+      }
+      return newMs < minMs;
+    }
+
+    // ===== Rendering (newest-first, grouped by date, with billable subtotal rule) =====
+    function renderHistory() {
+      const history = loadHistory();
+
+      const billableCount = history.filter(h => h.billable).length;
+      countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
+      historyEmpty.hidden = history.length > 0;
+      groupsContainer.innerHTML = '';
+      if (!history.length) return;
+
+      // 1) Sort entries newest-first
+      const sorted = history
+        .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
+        .sort((a, b) => b.dateObj - a.dateObj);
+
+      // 2) Augment with delta to immediate prior (next older) entry.
+      //    Start-of-day entries DISPLAY zero elapsed regardless of the prior time.
+      const augmented = sorted.map((e, i, arr) => {
+        const prior = arr[i + 1];
+        const deltaMs = prior ? (e.dateObj - prior.dateObj) : null;
+        const isStartOfDay = (e.note === 'Start of day.' && !e.billable);
+        const displayDeltaMs = isStartOfDay ? 0 : deltaMs;
+        return { ...e, deltaMs, displayDeltaMs, isStartOfDay };
+      });
+
+      // 3) Daily subtotal:
+      //    For each BILLABLE entry, add its gap to the subtotal of its OWN date,
+      //    regardless of the prior entry's date or billable flag.
+      const billableElapsedByDate = {};
+      for (let i = 0; i < augmented.length; i++) {
+        const cur = augmented[i];
+        const prior = augmented[i + 1];
+        if (!cur.billable) continue;
+        if (prior == null || cur.deltaMs == null) continue; // no prior -> no gap
+        const curKey = getDateKey(cur.datetime);
+        billableElapsedByDate[curKey] = (billableElapsedByDate[curKey] || 0) + cur.deltaMs;
+      }
+
+      // 4) Group by date (DESC)
+      const groupsMap = new Map();
+      for (const item of augmented) {
+        const key = getDateKey(item.datetime);
+        if (!groupsMap.has(key)) groupsMap.set(key, []);
+        groupsMap.get(key).push(item);
+      }
+      const groupKeysDesc = Array.from(groupsMap.keys()).sort((a, b) => new Date(b) - new Date(a));
+
+      // 5) Render groups with COMPACT inline rows (time-only per record)
+      for (const key of groupKeysDesc) {
+        const entries = groupsMap.get(key);
+
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group';
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'group-header';
+
+        const titleEl = document.createElement('h3');
+        titleEl.className = 'group-title';
+        titleEl.textContent = key;
+
+        const subtotalEl = document.createElement('div');
+        subtotalEl.className = 'group-subtotal';
+        const ms = billableElapsedByDate[key] || 0;
+        const elapsedText = ms ? formatElapsed(ms) : '—';
+        subtotalEl.textContent = `Billable elapsed: ${elapsedText}`;
+
+        headerDiv.appendChild(titleEl);
+        headerDiv.appendChild(subtotalEl);
+
+        const listEl = document.createElement('ul');
+        listEl.className = 'history-list';
+
+        for (const entry of entries) {
+          const li = document.createElement('li');
+          li.className = 'history-item';
+
+          // Inline left: time-only · pill · note (truncated)
+          const leftInline = document.createElement('div');
+          leftInline.className = 'left-inline';
+
+          const timeOnlyEl = document.createElement('span');
+          timeOnlyEl.className = 'time-only';
+          timeOnlyEl.textContent = getTimePart(entry.datetime); // HH:MM
+
+          const sep1 = document.createElement('span');
+          sep1.className = 'sep';
+          sep1.textContent = '·';
+
+          const billableEl = document.createElement('span');
+          billableEl.className = 'pill ' + (entry.billable ? 'billable-true' : 'billable-false');
+          billableEl.textContent = entry.billable ? '✓ Billable' : 'Non-billable';
+          billableEl.title = entry.billable ? 'This entry is billable' : 'This entry is not billable';
+
+          const sep2 = document.createElement('span');
+          sep2.className = 'sep';
+          sep2.textContent = '·';
+
+          const noteInline = document.createElement('span');
+          noteInline.className = 'note-inline';
+          noteInline.textContent = entry.note ? entry.note : '—';
+          if (entry.note) noteInline.title = entry.note;
+
+          leftInline.appendChild(timeOnlyEl);
+          leftInline.appendChild(sep1);
+          leftInline.appendChild(billableEl);
+          leftInline.appendChild(sep2);
+          leftInline.appendChild(noteInline);
+
+          // Right: elapsed (inline, right aligned)
+          const elapsedEl = document.createElement('span');
+          elapsedEl.className = 'elapsed';
+          if (entry.displayDeltaMs === null) {
+            elapsedEl.textContent = '—';
+            elapsedEl.title = 'No prior entry';
+          } else {
+            elapsedEl.textContent = formatElapsed(entry.displayDeltaMs);
+            elapsedEl.title = entry.isStartOfDay
+              ? 'Start of day (elapsed forced to zero)'
+              : 'Δ from prior saved entry';
+          }
+
+          li.appendChild(leftInline);
+          li.appendChild(elapsedEl);
+          listEl.appendChild(li);
+        }
+
+        groupDiv.appendChild(headerDiv);
+        groupDiv.appendChild(listEl);
+        groupsContainer.appendChild(groupDiv);
+      }
+    }
+
+    // ===== Save-time rule enforcement & entry creation =====
+    function tryAppendEntry(entry) {
+      const history = loadHistory();
+
+      // Rule: If the entry would become the oldest overall AND is NOT "Start of day." (non-billable),
+      // reject the save and raise an error. No ongoing checks; only at save time.
+      const isStartOfDayEntry = (entry.note === 'Start of day.' && entry.billable === false);
+      if (wouldBecomeOldest(entry.datetime, history) && !isStartOfDayEntry) {
+        alert('Cannot save: the oldest entry must be the “Start of day.” marker (non-billable).');
+        return false; // not saved
+      }
+
+      // Otherwise, save
+      history.push(entry);
+      saveHistory(history);
+      renderHistory();
+      return true; // saved
+    }
+
+    function appendCurrentToHistory() {
+      const currentStr = dtInput.value;
+      if (!currentStr) return;
+      const entry = {
+        datetime: currentStr,
+        note: noteInput.value.trim(),
+        billable: !!billableInput.checked
+      };
+
+      const saved = tryAppendEntry(entry);
+      if (saved) {
+        // Clear note after normal save
+        noteInput.value = '';
+      }
+    }
+
+    function addStartOfDayEntry() {
+      const currentStr = dtInput.value;
+      if (!currentStr) return;
+      const entry = {
+        datetime: currentStr,
+        note: 'Start of day.',
+        billable: false
+      };
+      // Save; this will pass the rule (SOD marker is allowed to be oldest)
+      tryAppendEntry(entry);
+      // Do not clear user's note for this timehack
+    }
+
+    function clearHistory() {
+      localStorage.removeItem(STORAGE_KEY);
+      renderHistory();
+    }
+
+    // ===== CSV Export =====
+    function csvEscape(value) {
+      if (value == null) return '';
+      const s = String(value);
+      if (/[",\n]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+
+    function buildCsvRows() {
+      const history = loadHistory();
+      if (!history.length) return [];
+
+      // Sort newest-first and augment with prior gap & display rule
+      const sorted = history
+        .map(e => ({ ...e, dateObj: fromDatetimeLocalValue(e.datetime).getTime() }))
+        .sort((a, b) => b.dateObj - a.dateObj);
+
+      const augmented = sorted.map((e, i, arr) => {
+        const prior = arr[i + 1];
+        const deltaMs = prior ? (e.dateObj - prior.dateObj) : null;
+        const isStartOfDay = (e.note === 'Start of day.' && !e.billable);
+        const displayDeltaMs = isStartOfDay ? 0 : deltaMs;
+        return { ...e, deltaMs, displayDeltaMs, isStartOfDay };
+      });
+
+      const rows = [
+        ['Date', 'Time', 'Note', 'Billable', 'Elapsed'].map(csvEscape).join(',')
+      ];
+
+      for (const e of augmented) {
+        const [datePart, timePart] = e.datetime.split('T');
+        const note = e.note || '';
+        const billable = e.billable ? 'true' : 'false';
+        const elapsedStr =
+          e.displayDeltaMs == null
+            ? '' // no prior entry -> blank elapsed
+            : formatElapsed(e.displayDeltaMs).replace(/^\+/, ''); // drop leading '+' for CSV
+
+        rows.push([
+          csvEscape(datePart),
+          csvEscape(timePart),
+          csvEscape(note),
+          csvEscape(billable),
+          csvEscape(elapsedStr)
+        ].join(','));
+      }
+
+      return rows;
+    }
+
+    function exportToCSV() {
+      const rows = buildCsvRows();
+      if (!rows.length) {
+        alert('No data to export.');
+        return;
+      }
+      const csvContent = rows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const filename = `quick-date-${yyyy}-${mm}-${dd}.csv`;
+
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== Initialize =====
+    setNow();
+    renderHistory();
+
+    // Buttons
+    document.getElementById('hour-inc').addEventListener('click', () => applyDelta({ hours: 1 }));
+    document.getElementById('hour-dec').addEventListener('click', () => applyDelta({ hours: -1 }));
+    document.getElementById('min-inc').addEventListener('click', () => applyDelta({ minutes: 1 }));
+    document.getElementById('min-dec').addEventListener('click', () => applyDelta({ minutes: -1 }));
+
+    dtInput.addEventListener('input', () => updateLabels(getCurrentDate()));
+    document.getElementById('reset-now').addEventListener('click', setNow);
+    document.getElementById('log-value').addEventListener('click', () => appendCurrentToHistory());
+    document.getElementById('start-day').addEventListener('click', () => addStartOfDayEntry());
+    document.getElementById('export-csv').addEventListener('click', exportToCSV);
+    document.getElementById('clear-history').addEventListener('click', () => {
+      if (confirm('Clear all saved entries?')) clearHistory();
+    });
+
+    // After changing the billable checkbox (click/touch), blur and move focus to note
+    billableInput.addEventListener('change', () => {
+      billableInput.blur();
+      noteInput.focus();
+    });
+
+
+    // ===== Keyboard shortcuts (your chosen version) =====
+    function handleKey(e) {
+      const keyLower = e.key.toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey; // treat Cmd (macOS) like Ctrl
+      const shift = e.shiftKey;
+	  const timeWorkedDiv = document.getElementById('time-worked');
+	  if(timeWorkedDiv.contains(e.target)){
+	
+	    
+        // --- Time adjustments (always enabled) ---
+        if (keyLower === 'arrowup') {
+          e.preventDefault();
+          if (shift) applyDelta({ hours: 1 });
+          else if (ctrl) applyDelta({ minutes: 5 });
+          else applyDelta({ minutes: 1 });
+          return;
+        }
+        if (keyLower === 'arrowdown') {
+          e.preventDefault();
+          if (shift) applyDelta({ hours: -1 });
+          else if (ctrl) applyDelta({ minutes: -5 });
+          else applyDelta({ minutes: -1 });
+          return;
+        }
+        if (keyLower === 'home') {
+          e.preventDefault();
+          const d = getCurrentDate();
+          d.setMinutes(0, 0, 0);
+          dtInput.value = toDatetimeLocalValue(d);
+          updateLabels(d);
+          return;
+        }
+        if (keyLower === 'end') {
+          e.preventDefault();
+          const d = getCurrentDate();
+          d.setMinutes(59, 0, 0);
+          dtInput.value = toDatetimeLocalValue(d);
+          updateLabels(d);
+          return;
+        }
+	    
+        // --- Enter saves (always enabled) ---
+        if (keyLower === 'enter') {
+          e.preventDefault();
+          appendCurrentToHistory();
+          return;
+        }
+            
+        // --- Alpha shortcuts: require Ctrl/Cmd ---
+        if (ctrl) {
+          if (keyLower === 'b') {
+            e.preventDefault();
+            billableInput.checked = !billableInput.checked;
+            return;
+          }
+          if (keyLower === 'r') {
+            e.preventDefault();
+            setNow();
+            return;
+          }
+        }
+      }
+      
+	  // --- Move Focus to Note field: Cannot use Ctrl+N because that opens a new browser window ---
+      if (keyLower === 'n') {
+        if (!(e.target === noteInput)) e.preventDefault();
+        noteInput.focus();
+        return;
+      }
+    }
+    // Bind globally (and optionally to the datetime input)
+    dtInput.addEventListener('keydown', handleKey);
+    document.addEventListener('keydown', handleKey);
+	
+	
+	
+	
+	
+	
+	
+	
+	/* ---------------- TIME BILLED ---------------- */
+	const billedTableBody = document.querySelector('#billed-table tbody');
+	let weeks = JSON.parse(localStorage.getItem('billedWeeks')) || [];
+
+	function renderTable() {
+	  billedTableBody.innerHTML = '';
+	  weeks.forEach((week, index) => {
+		const row = document.createElement('tr');
+		const weekCell = document.createElement('td');
+		weekCell.textContent = week.weekStart;
+		row.appendChild(weekCell);
+
+		let total = 0;
+		['Mon','Tue','Wed','Thu','Fri'].forEach(day => {
+		  const cell = document.createElement('td');
+		  const value = week.days[day];
+		  cell.textContent = value.toFixed(1);
+		  total += value;
+		  row.appendChild(cell);
+		});
+
+		const totalCell = document.createElement('td');
+		totalCell.textContent = total.toFixed(1);
+		row.appendChild(totalCell);
+
+		const actionCell = document.createElement('td');
+		const deleteBtn = document.createElement('button');
+		deleteBtn.textContent = 'Delete';
+		deleteBtn.style.backgroundColor = '#d9534f';
+		deleteBtn.style.color = '#fff';
+		deleteBtn.addEventListener('click', () => {
+		  weeks.splice(index, 1);
+		  localStorage.setItem('billedWeeks', JSON.stringify(weeks));
+		  renderTable();
+		});
+		actionCell.appendChild(deleteBtn);
+		row.appendChild(actionCell);
+
+		billedTableBody.appendChild(row);
+	  });
+	}
+
+	document.getElementById('billed-form').addEventListener('submit', e => {
+	  e.preventDefault();
+	  const weekStart = document.getElementById('week-start').value;
+	  const mon = parseFloat(document.getElementById('mon').value);
+	  const tue = parseFloat(document.getElementById('tue').value);
+	  const wed = parseFloat(document.getElementById('wed').value);
+	  const thu = parseFloat(document.getElementById('thu').value);
+	  const fri = parseFloat(document.getElementById('fri').value);
+
+	  if (weeks.some(w => w.weekStart === weekStart)) {
+		alert('This week is already saved.');
+		return;
+	  }
+
+	  const newWeek = { weekStart, days: { Mon: mon, Tue: tue, Wed: wed, Thu: thu, Fri: fri } };
+	  weeks.push(newWeek);
+	  weeks.sort((a,b) => new Date(b.weekStart) - new Date(a.weekStart));
+	  localStorage.setItem('billedWeeks', JSON.stringify(weeks));
+	  renderTable();
+	  e.target.reset();
+	});
+
+	renderTable();
+  </script>
 </body>
 </html>

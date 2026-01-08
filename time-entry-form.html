@@ -15,6 +15,8 @@
 		<input id="agg-start-dt" type="date" />
 		<button id="btn-save-start-dt">Save</button>
 	</div>
+	<div id="total-time-worked"></div>
+	<button id="test-button">Test Button</button>
 </div>
 </br>
 <div class="container">
@@ -256,8 +258,6 @@
       }
       return newMs < minMs;
     }
-
-
 
 
 
@@ -710,7 +710,7 @@ function renderHistory() {
 		const savedDate = localStorage.getItem(STORAGE_KEY__AGG_START);
 
 		if (savedDate) {
-			input.value = savedDate; // Works fine with type="date"
+			input.value = savedDate;
 		}
 
 		document.getElementById('btn-save-start-dt').addEventListener('click', () => {
@@ -723,6 +723,44 @@ function renderHistory() {
 			}
 		});
 	});
+	
+	//MY STUFF//
+	document.getElementById('test-button').addEventListener('click', () => {
+		const el = event.currentTarget;
+		console.log(el.id);
+		console.log(document.getElementById('agg-start-dt').value);
+		console.log(getTotalTimeWorked());
+		document.getElementById('total-time-worked').textContent = `Total Time Worked: ${getTotalTimeWorked()} minutes`;
+	});
+	
+	function getTotalTimeWorked() {
+		const input = document.getElementById('agg-start-dt');
+		const history = loadHistory().sort((a, b) => new Date(b.datetime) - new Date(a.datetime)) // Step 1: sort;
+        
+		// Map and compute delta to the next (older) item
+        const historyWithDeltas = history.map((item, i, arr) => {
+    	  const next = arr[i + 1]; // older record
+    	  if (!next) { return { ...item, deltaMinutes: 0 }};
+
+          const currDate = new Date(item.datetime);
+          const nextDate = new Date(next.datetime);
+          
+          const validCurr = !Number.isNaN(currDate);
+          const validNext = !Number.isNaN(nextDate);
+          
+          const deltaMs = validCurr && validNext ? (currDate - nextDate) : 0;
+
+    	  const deltaMinutes = Math.max(0, Math.round(deltaMs / 60000)); // clamp to 0
+    	  return { ...item, deltaMinutes };
+        })
+		.filter(h => h.datetime >= input.value && h.billable===true);
+		
+		//Total the Delta.
+        return historyWithDeltas.reduce((sum, item) => {
+		  return sum + (item.deltaMinutes || 0);
+		}, 0);
+	}
+	
 
   </script>
 </body>

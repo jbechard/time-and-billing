@@ -81,17 +81,13 @@
 
     <!-- History -->
     <div class="history" aria-live="polite">
-      <div class="history-header">
-        <h2 style="margin: 0;">Saved entries (newest first)</h2>
-        <small id="count"></small>
-      </div>
       <div id="groups-container"></div>
       <p id="history-empty" class="empty" hidden>No saved entries yet. Press <strong>Save value</strong> or hit <kbd>Enter</kbd>.</p>
     </div>
   </div>
   <div class="card" role="group" aria-label="Billed Time entry">
      <div class="section" id="time-billed">
-      <h2>Time Billed</h2>
+      <h3>Billed</h3>
       <form id="billed-form">
 	    <table id="billed-input-table">
 	    	<thead>
@@ -188,7 +184,6 @@
 
     const groupsContainer = document.getElementById('groups-container');
     const historyEmpty = document.getElementById('history-empty');
-    const countEl = document.getElementById('count');
 
     function setNow() {
       const now = new Date();
@@ -267,7 +262,6 @@ function renderHistory() {
   const history = loadHistory();
 
   const billableCount = history.filter(h => h.billable).length;
-  countEl.textContent = history.length ? `${history.length} saved (${billableCount} billable)` : '';
   historyEmpty.hidden = history.length > 0;
   groupsContainer.innerHTML = '';
   if (!history.length) return;

@@ -16,11 +16,12 @@
 		<button id="btn-save-start-dt">Save</button>
 	</div>
 	<div id="total-time-worked"></div>
-	<button id="test-button">Test Button</button>
+	<div id="total-time-billed"></div>
+	<button id="deficit-button">Calculate Deficit/Bank</button>
 </div>
 </br>
 <div class="container">
-  <div class="card" role="group" id="time-worked" aria-label="Quick date entry">
+  <div class="card" role="group" id="time-worked" aria-label="Time Worked">
 
     <!-- Time + Note side-by-side -->
     <div class="row-time-note">
@@ -719,17 +720,15 @@ function renderHistory() {
 	});
 	
 	//MY STUFF//
-	document.getElementById('test-button').addEventListener('click', () => {
+	document.getElementById('deficit-button').addEventListener('click', () => {
 		const el = event.currentTarget;
-		console.log(el.id);
-		console.log(document.getElementById('agg-start-dt').value);
-		console.log(getTotalTimeWorked());
-		document.getElementById('total-time-worked').textContent = `Total Time Worked: ${getTotalTimeWorked()} minutes`;
+		document.getElementById('total-time-worked').textContent = `Total Time Worked: ${getTotalHrsWorked()} hours`;
+		document.getElementById('total-time-billed').textContent = `Total Time Billed: ${getTotalHrsBilled()} hours`;		
 	});
 	
-	function getTotalTimeWorked() {
+	function getTotalHrsWorked() {
 		const input = document.getElementById('agg-start-dt');
-		const history = loadHistory().sort((a, b) => new Date(b.datetime) - new Date(a.datetime)) // Step 1: sort;
+		const history = loadHistory().sort((a, b) => new Date(b.datetime) - new Date(a.datetime)) // Step 1: sort descending;
         
 		// Map and compute delta to the next (older) item
         const historyWithDeltas = history.map((item, i, arr) => {
@@ -750,11 +749,27 @@ function renderHistory() {
 		.filter(h => h.datetime >= input.value && h.billable===true);
 		
 		//Total the Delta.
-        return historyWithDeltas.reduce((sum, item) => {
-		  return sum + (item.deltaMinutes || 0);
-		}, 0);
+        return historyWithDeltas.reduce( (sum, item) => {
+		   return sum + (item.deltaMinutes || 0) ;
+		}, 0) / 60;
 	}
 	
+	function getTotalHrsBilled() {
+        const raw = localStorage.getItem(STORAGE_KEY__TIME_BILLED);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        const normalized = parsed.map(item => {
+			var wkTot = (item.days.Mon + item.days.Tue + item.days.Wed + item.days.Thu + item.days.Fri);
+            return {
+              weekStart: typeof item.weekStart === 'string' ? item.weekStart : '',
+              wkTot: typeof wkTot === 'number' ? wkTot : 0
+            };
+          });
+		return normalized.reduce((sum, item) => {
+			return sum + (item.wkTot || 0);
+			}, 0);
+        };
+			
 
   </script>
 </body>

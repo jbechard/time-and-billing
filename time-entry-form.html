@@ -374,9 +374,12 @@ function renderHistory() {
       deleteBtn.className = 'delete-btn';
 
       deleteBtn.addEventListener('click', () => {
-        const updatedHistory = loadHistory().filter(h => h.datetime !== entry.datetime);
-        saveHistory(updatedHistory);
-        renderHistory();
+		const ok = window.confirm(`Delete entry from ${new Date(entry.datetime).toLocaleString()}?`);
+		if (!ok) return;
+
+		const updatedHistory = loadHistory().filter(h => h.datetime !== entry.datetime);
+		saveHistory(updatedHistory);
+		renderHistory();
       });
 
       rightInline.appendChild(elapsedEl);

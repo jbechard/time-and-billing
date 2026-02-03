@@ -17,6 +17,7 @@
 	</div>
 	<div id="total-time-worked"></div>
 	<div id="total-time-billed"></div>
+	<div id="total-time-deficit"></div>
 	<button id="deficit-button">Calculate Deficit/Bank</button>
 </div>
 </br>
@@ -725,8 +726,12 @@ function renderHistory() {
 	//MY STUFF//
 	document.getElementById('deficit-button').addEventListener('click', () => {
 		const el = event.currentTarget;
-		document.getElementById('total-time-worked').textContent = `Total Time Worked: ${getTotalHrsWorked()} hours`;
-		document.getElementById('total-time-billed').textContent = `Total Time Billed: ${getTotalHrsBilled()} hours`;		
+		var worked = getTotalHrsWorked().toFixed(2);
+		var billed = getTotalHrsBilled().toFixed(2);
+		var bank = getTotalHrsDeficit().toFixed(2);
+		document.getElementById('total-time-worked').textContent = `Total Time Worked: ${worked} hours`;
+		document.getElementById('total-time-billed').textContent = `Total Time Billed: ${billed} hours`;
+		document.getElementById('total-time-deficit').textContent = `Total Time Bank: ${bank} hours`;
 	});
 	
 	function getTotalHrsWorked() {
@@ -773,7 +778,9 @@ function renderHistory() {
 			}, 0);
         };
 			
-
+	function getTotalHrsDeficit() {
+		return getTotalHrsWorked() - getTotalHrsBilled()
+	}
   </script>
 </body>
 </html>

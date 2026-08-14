@@ -420,17 +420,14 @@ function renderHistory() {
     function appendCurrentToHistory() {
       const currentStr = dtInput.value;
       if (!currentStr) return;
-      const entry = {
+      
+	  const entry = {
         datetime: currentStr,
         note: noteInput.value.trim(),
         billable: !!billableInput.checked
       };
 
-      const saved = tryAppendEntry(entry);
-      if (saved) {
-        // Clear note after normal save
-        noteInput.value = '';
-      }
+      tryAppendEntry(entry);
     }
 
     function addStartOfDayEntry() {
